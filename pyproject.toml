@@ -1,0 +1,46 @@
+[project]
+name = "reference-discord-bot"
+version = "0.1.0"
+description = "Discord bot for the podcast 引書店."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "discord.py>=2.4.0",
+    "feedparser>=6.0.11",
+    "imageio-ffmpeg>=0.6.0",
+    "python-dotenv>=1.0.1",
+]
+
+[project.scripts]
+reference-ask = "reference_bot.ask_cli:main"
+reference-bot = "reference_bot.bot:main"
+reference-bot-status = "reference_bot.bot_process:status_main"
+reference-download-audio = "reference_bot.download_audio:main"
+reference-eval-concept-map = "reference_bot.eval_concept_map:main"
+reference-export-transcripts = "reference_bot.export_transcripts:main"
+reference-generate-summaries = "reference_bot.generate_summaries:main"
+reference-generate-openai-summaries = "reference_bot.generate_openai_summaries:main"
+reference-healthcheck = "reference_bot.healthcheck:main"
+reference-import-transcript = "reference_bot.import_transcript:main"
+reference-index-concept-map = "reference_bot.index_concept_map:main"
+reference-index-concepts = "reference_bot.index_concepts:main"
+reference-index-transcripts = "reference_bot.index_transcripts:main"
+reference-list-downloads = "reference_bot.list_downloads:main"
+reference-list-episodes = "reference_bot.list_episodes:main"
+reference-list-transcriptions = "reference_bot.list_transcriptions:main"
+reference-map-concepts = "reference_bot.map_concepts:main"
+reference-polish-transcripts = "reference_bot.polish_transcripts:main"
+reference-run-bot = "reference_bot.bot_process:run_main"
+reference-run-pipeline = "reference_bot.pipeline:main"
+reference-search-transcripts = "reference_bot.search_transcripts:main"
+reference-stop-bot = "reference_bot.bot_process:stop_main"
+reference-sync-rss = "reference_bot.rss_sync:main"
+reference-transcribe-audio = "reference_bot.transcribe_audio:main"
+reference-transcribe-openai = "reference_bot.transcribe_openai_audio:main"
+
+[build-system]
+requires = ["setuptools>=69.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
