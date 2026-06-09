@@ -3,8 +3,8 @@ services:
     name: reference-podcast-discord-bot
     runtime: python
     plan: free
-    buildCommand: pip install .
-    startCommand: reference-bot
+    buildCommand: python -m pip install --upgrade pip && python -m pip install .
+    startCommand: python start.py
     healthCheckPath: /health
     envVars:
       - key: PYTHON_VERSION
@@ -13,5 +13,5 @@ services:
         value: episodes.sqlite3
       - key: DISCORD_TOKEN
         sync: false
-      - key: DISCORD_GUILD_ID
+      - key: DISCORD_GUILD_IDS
         sync: false
