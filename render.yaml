@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: reference-podcast-discord-bot
+    runtime: python
+    plan: free
+    buildCommand: pip install .
+    startCommand: reference-bot
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.8
+      - key: DATABASE_PATH
+        value: episodes.sqlite3
+      - key: DISCORD_TOKEN
+        sync: false
+      - key: DISCORD_GUILD_ID
+        sync: false
