@@ -87,12 +87,69 @@ def _fallback_transcript_query(question: str) -> str:
     stop_phrases = (
         "有沒有", "是否", "請問", "可以", "幫我", "想知道", "曾經", "節目中",
         "討論過", "討論", "聊過", "聊到", "介紹過", "介紹", "提過", "提到",
-        "相關的", "相關", "內容", "集數", "哪一集", "哪些集",
+        "相關的", "相關", "內容", "集數", "哪一集", "哪些集", "這一集",
+        "這集", "一集", "這本書", "這本", "本書", "書籍", "這個概念",
+        "這個主題", "這個", "podcast", "Podcast",
     )
     for phrase in stop_phrases:
         cleaned = cleaned.replace(phrase, " ")
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
     return cleaned or question.strip()
+
+
+def _query_variants(query: str) -> list[str]:
+    cleaned = _fallback_transcript_query(query)
+    variants = [cleaned]
+    normalized = cleaned.lower()
+    if "慣習" in cleaned or "habitus" in normalized:
+        variants.extend(["慣習", "habitus", "Habitus"])
+    if "文化資本" in cleaned:
+        variants.extend(["文化資本", "七種資本", "慣習"])
+
+    unique: list[str] = []
+    for variant in variants:
+        variant = variant.strip()
+        if variant and variant not in unique:
+            unique.append(variant)
+    return unique or [query.strip()]
+
+
+def _merge_rows_by_episode(rows_by_query: Iterable[list[sqlite3.Row]]) -> list[sqlite3.Row]:
+    seen: set[str] = set()
+    merged: list[sqlite3.Row] = []
+    for rows in rows_by_query:
+        for row in rows:
+            if "name" in row.keys():
+                key = f"{row['title']}:{row['name']}"
+            elif "guid" in row.keys():
+                key = row["guid"]
+            else:
+                key = f"{row['title']}:{len(merged)}"
+            if key in seen:
+                continue
+            seen.add(key)
+            merged.append(row)
+    return merged
+
+
+def _excerpt_around_query(text: str, query: str, context: int = 130) -> str:
+    compact = " ".join(text.split())
+    terms = _query_variants(query)
+    lowered = compact.lower()
+    index = -1
+    match_length = 0
+    for term in terms:
+        term_index = lowered.find(term.lower())
+        if term_index >= 0 and (index < 0 or term_index < index):
+            index = term_index
+            match_length = len(term)
+    if index < 0:
+        return compact[: context * 2].rstrip()
+    start = max(0, index - context)
+    end = min(len(compact), index + match_length + context)
+    prefix = "..." if start else ""
+    suffix = "..." if end < len(compact) else ""
+    return f"{prefix}{compact[start:end].strip()}{suffix}"
 
 
 def _first_result_per_episode(results: Iterable[object]) -> list[object]:
@@ -217,10 +274,11 @@ def _answer_locally(question: str) -> str:
         return _format_episode_summary_answer(question, episode_number, _summary_by_episode_number(episode_number))
 
     search_query = _fallback_transcript_query(question)
-    summaries = _search_episode_summaries(search_query, limit=4)
-    books = _search_mentions("book_mentions", search_query, limit=3)
-    concepts = _search_mentions("concept_mentions", search_query, limit=4)
-    transcripts = _search_transcripts(search_query, limit=4)
+    variants = _query_variants(question)
+    summaries = _merge_rows_by_episode(_search_episode_summaries(variant, limit=4) for variant in variants)[:4]
+    books = _merge_rows_by_episode(_search_mentions("book_mentions", variant, limit=3) for variant in variants)[:3]
+    concepts = _merge_rows_by_episode(_search_mentions("concept_mentions", variant, limit=4) for variant in variants)[:4]
+    transcripts = _merge_rows_by_episode(_search_transcripts(variant, limit=4) for variant in variants)[:4]
 
     if not any((summaries, books, concepts, transcripts)):
         return (
@@ -248,7 +306,7 @@ def _answer_locally(question: str) -> str:
             if row["guid"] in seen:
                 continue
             seen.add(row["guid"])
-            excerpt = " ".join(row["chunk_text"].split())[:160]
+            excerpt = _excerpt_around_query(row["chunk_text"], search_query, context=80)
             lines.append(f"- {row['title']}：{excerpt}…")
     lines.append("\n註：這是資料庫關鍵字檢索結果，不代表該集完整內容只限於上述主題。")
     return _truncate("\n".join(lines))
@@ -289,14 +347,18 @@ class ReferenceBot(discord.Client):
         @app_commands.describe(query="書名或關鍵字")
         async def book(interaction: discord.Interaction, query: str) -> None:
             await interaction.response.defer(thinking=True)
-            rows = await asyncio.to_thread(_search_mentions, "book_mentions", query, 8)
+            rows = await asyncio.to_thread(
+                lambda: _merge_rows_by_episode(_search_mentions("book_mentions", variant, 8) for variant in _query_variants(query))[:8]
+            )
             await interaction.followup.send(_format_search_rows(rows, f"書籍搜尋：{query}"))
 
         @self.tree.command(name="topic", description="搜尋節目主題與概念")
         @app_commands.describe(query="主題或關鍵字")
         async def topic(interaction: discord.Interaction, query: str) -> None:
             await interaction.response.defer(thinking=True)
-            rows = await asyncio.to_thread(_search_mentions, "concept_mentions", query, 8)
+            rows = await asyncio.to_thread(
+                lambda: _merge_rows_by_episode(_search_mentions("concept_mentions", variant, 8) for variant in _query_variants(query))[:8]
+            )
             await interaction.followup.send(_format_search_rows(rows, f"主題搜尋：{query}"))
 
         @self.tree.command(name="mentioned", description="搜尋逐字稿中出現的關鍵字")
@@ -313,7 +375,7 @@ class ReferenceBot(discord.Client):
                 if row["guid"] in seen:
                     continue
                 seen.add(row["guid"])
-                excerpt = " ".join(row["chunk_text"].split())[:260]
+                excerpt = _excerpt_around_query(row["chunk_text"], query, context=130)
                 lines.append(f"- {row['title']}\n  {excerpt}…")
             await interaction.followup.send(_truncate("\n".join(lines)))
 
