@@ -107,9 +107,12 @@ def _query_variants(query: str) -> list[str]:
         variants.extend(["文化資本", "七種資本", "慣習"])
 
     unique: list[str] = []
+    seen_normalized: set[str] = set()
     for variant in variants:
         variant = variant.strip()
-        if variant and variant not in unique:
+        normalized_variant = variant.casefold()
+        if variant and normalized_variant not in seen_normalized:
+            seen_normalized.add(normalized_variant)
             unique.append(variant)
     return unique or [query.strip()]
 
@@ -150,6 +153,17 @@ def _excerpt_around_query(text: str, query: str, context: int = 130) -> str:
     prefix = "..." if start else ""
     suffix = "..." if end < len(compact) else ""
     return f"{prefix}{compact[start:end].strip()}{suffix}"
+
+
+def _highlight_query_terms(text: str, query: str) -> str:
+    highlighted = text
+    terms = sorted(_query_variants(query), key=len, reverse=True)
+    for term in terms:
+        if not term:
+            continue
+        pattern = re.compile(re.escape(term), flags=re.IGNORECASE)
+        highlighted = pattern.sub(lambda match: f"**{match.group(0)}**", highlighted)
+    return highlighted
 
 
 def _first_result_per_episode(results: Iterable[object]) -> list[object]:
@@ -376,6 +390,7 @@ class ReferenceBot(discord.Client):
                     continue
                 seen.add(row["guid"])
                 excerpt = _excerpt_around_query(row["chunk_text"], query, context=130)
+                excerpt = _highlight_query_terms(excerpt, query)
                 lines.append(f"- {row['title']}\n  {excerpt}…")
             await interaction.followup.send(_truncate("\n".join(lines)))
 
