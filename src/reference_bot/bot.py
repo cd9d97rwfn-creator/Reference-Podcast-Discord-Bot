@@ -135,6 +135,97 @@ def _merge_rows_by_episode(rows_by_query: Iterable[list[sqlite3.Row]]) -> list[s
     return merged
 
 
+def _row_key(kind: str, row: sqlite3.Row) -> str:
+    if kind in {"書籍", "概念"}:
+        return f"{kind}:{row['title']}:{row['name']}"
+    if "guid" in row.keys():
+        return f"{kind}:{row['guid']}"
+    return f"{kind}:{row['title']}"
+
+
+def _strict_mention_rows(rows: list[sqlite3.Row], query: str) -> list[sqlite3.Row]:
+    normalized_query = query.casefold()
+    return [
+        row
+        for row in rows
+        if normalized_query in (row["name"] or "").casefold()
+    ]
+
+
+def _answer_hits_for_queries(
+    queries: Iterable[str], *, strict_mentions: bool = False
+) -> dict[str, list[sqlite3.Row]]:
+    query_list = list(queries)
+    book_rows: list[list[sqlite3.Row]] = []
+    concept_rows: list[list[sqlite3.Row]] = []
+    for query in query_list:
+        books = _search_mentions("book_mentions", query, limit=3)
+        concepts = _search_mentions("concept_mentions", query, limit=4)
+        if strict_mentions:
+            books = _strict_mention_rows(books, query)
+            concepts = _strict_mention_rows(concepts, query)
+        book_rows.append(books)
+        concept_rows.append(concepts)
+
+    return {
+        "摘要": _merge_rows_by_episode(_search_episode_summaries(query, limit=4) for query in query_list)[:4],
+        "書籍": _merge_rows_by_episode(book_rows)[:3],
+        "概念": _merge_rows_by_episode(concept_rows)[:4],
+        "逐字稿": _merge_rows_by_episode(_search_transcripts(query, limit=4) for query in query_list)[:4],
+    }
+
+
+def _hit_count(hits: dict[str, list[sqlite3.Row]]) -> int:
+    return sum(len(rows) for rows in hits.values())
+
+
+def _hit_keys(hits: dict[str, list[sqlite3.Row]]) -> set[str]:
+    keys: set[str] = set()
+    for kind, rows in hits.items():
+        keys.update(_row_key(kind, row) for row in rows)
+    return keys
+
+
+def _without_existing_hits(
+    hits: dict[str, list[sqlite3.Row]], existing_keys: set[str]
+) -> dict[str, list[sqlite3.Row]]:
+    return {
+        kind: [row for row in rows if _row_key(kind, row) not in existing_keys]
+        for kind, rows in hits.items()
+    }
+
+
+def _format_answer_hit(kind: str, row: sqlite3.Row, query: str) -> str:
+    if kind == "摘要":
+        return f"- [摘要] {row['title']}：{row['one_sentence_summary']}"
+    if kind == "書籍":
+        return f"- [書籍] 《{row['name']}》— {row['title']}"
+    if kind == "概念":
+        return f"- [概念] {row['name']} — {row['title']}"
+    if kind == "逐字稿":
+        excerpt = _excerpt_around_query(row["chunk_text"], query, context=70)
+        excerpt = _highlight_query_terms(excerpt, query)
+        return f"- [逐字稿] {row['title']}：{excerpt}…"
+    return f"- {row['title']}"
+
+
+def _append_hit_section(
+    lines: list[str],
+    heading: str,
+    hits: dict[str, list[sqlite3.Row]],
+    query: str,
+    limit: int,
+) -> None:
+    lines.append(heading)
+    count = 0
+    for kind in ("摘要", "書籍", "概念", "逐字稿"):
+        for row in hits[kind]:
+            if count >= limit:
+                return
+            lines.append(_format_answer_hit(kind, row, query))
+            count += 1
+
+
 def _excerpt_around_query(text: str, query: str, context: int = 130) -> str:
     compact = " ".join(text.split())
     terms = _query_variants(query)
@@ -289,40 +380,30 @@ def _answer_locally(question: str) -> str:
 
     search_query = _fallback_transcript_query(question)
     variants = _query_variants(question)
-    summaries = _merge_rows_by_episode(_search_episode_summaries(variant, limit=4) for variant in variants)[:4]
-    books = _merge_rows_by_episode(_search_mentions("book_mentions", variant, limit=3) for variant in variants)[:3]
-    concepts = _merge_rows_by_episode(_search_mentions("concept_mentions", variant, limit=4) for variant in variants)[:4]
-    transcripts = _merge_rows_by_episode(_search_transcripts(variant, limit=4) for variant in variants)[:4]
+    direct_hits = _answer_hits_for_queries([search_query], strict_mentions=True)
+    related_queries = [variant for variant in variants if variant.casefold() != search_query.casefold()]
+    related_hits = _without_existing_hits(
+        _answer_hits_for_queries(related_queries) if related_queries else {"摘要": [], "書籍": [], "概念": [], "逐字稿": []},
+        _hit_keys(direct_hits),
+    )
 
-    if not any((summaries, books, concepts, transcripts)):
+    if not _hit_count(direct_hits) and not _hit_count(related_hits):
         return (
             f"你問：{question}\n\n"
             "目前沒有找到明確結果。建議改用 `/book`、`/topic` 或 `/mentioned` 搭配較短的關鍵字。"
         )
 
     lines = [f"你問：{question}", ""]
-    if summaries:
-        lines.append("可能相關的集數：")
-        for row in summaries:
-            lines.append(f"- {row['title']}：{row['one_sentence_summary']}")
-    if books:
-        lines.append("\n書籍索引：")
-        for row in books:
-            lines.append(f"- 《{row['name']}》— {row['title']}")
-    if concepts:
-        lines.append("\n概念索引：")
-        for row in concepts:
-            lines.append(f"- {row['name']} — {row['title']}")
-    if transcripts:
-        lines.append("\n逐字稿線索：")
-        seen: set[str] = set()
-        for row in transcripts:
-            if row["guid"] in seen:
-                continue
-            seen.add(row["guid"])
-            excerpt = _excerpt_around_query(row["chunk_text"], search_query, context=80)
-            lines.append(f"- {row['title']}：{excerpt}…")
-    lines.append("\n註：這是資料庫關鍵字檢索結果，不代表該集完整內容只限於上述主題。")
+    if _hit_count(direct_hits):
+        _append_hit_section(lines, "直接命中：", direct_hits, search_query, limit=6)
+    if _hit_count(related_hits):
+        if _hit_count(direct_hits):
+            lines.append("")
+        _append_hit_section(lines, "可能相關但不完全相同：", related_hits, search_query, limit=4)
+    lines.append(
+        "\n提醒：相近概念可能在同一集被一起討論，但不代表意思完全相同；"
+        "[摘要]、[書籍]、[概念]、[逐字稿] 代表不同證據來源。"
+    )
     return _truncate("\n".join(lines))
 
 
