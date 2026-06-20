@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import re
 
 from reference_bot.answer_synthesis import DEFAULT_ASK_MODEL, synthesize_answer
 from reference_bot.episodes import (
@@ -84,6 +85,8 @@ def answer_question(
                 transcript_results=transcript_results[:3],
                 book_mentions=book_mentions,
                 concept_mentions=concept_mentions,
+                concept_clusters=concept_clusters,
+                concept_relationships=concept_relationships,
             )
         except Exception:
             answer = ""
@@ -135,11 +138,7 @@ def _format_structured_fallback_answer(
 ) -> str:
     has_index_hits = bool(book_mentions or concept_mentions or concept_clusters or concept_relationships)
     if not summaries and not transcript_results and not has_index_hits:
-        return (
-            f"你問：{question}\n\n"
-            "目前沒有在 summary index 或逐字稿 chunks 找到明確相關內容。"
-            "如果你知道可能的關鍵字，可以試 `/mentioned 關鍵字`。"
-        )
+        return _format_no_match_answer(question)
 
     lines = [f"你問：{question}", "", "簡短回答："]
     if summaries:
@@ -201,6 +200,111 @@ def _format_structured_fallback_answer(
         ]
     )
     return _truncate_discord_message("\n".join(lines))
+
+
+def _format_no_match_answer(question: str) -> str:
+    if _looks_off_topic(question):
+        return _format_off_topic_answer(question)
+
+    return (
+        f"你問：{question}\n\n"
+        "目前沒有在 summary index 或逐字稿 chunks 找到明確相關內容。"
+        "如果你知道可能的關鍵字，可以換個問法再試 `/ask`。"
+    )
+
+
+def _format_off_topic_answer(question: str) -> str:
+    response = _off_topic_response(question)
+    return (
+        f"你問：{question}\n\n"
+        f"{response}\n\n"
+        "我主要負責查「引書店 Podcast」的集數、書籍、概念與逐字稿證據。"
+        "你可以改問：`有沒有聊過職業倦怠？`、`哪幾集提到納瓦爾？`、`EP.375 在講什麼？`"
+    )
+
+
+def _off_topic_response(question: str) -> str:
+    normalized_question = question.lower()
+    if any(term in normalized_question for term in ("你是誰", "你會什麼", "help", "使用說明")):
+        return "我是引書店資料查詢 bot，不是通用聊天 bot；我會盡量把問題拉回節目資料。"
+    if any(term in question for term in ("天氣", "幾點", "現在時間", "匯率", "股價", "新聞", "路況")):
+        return "這題需要即時外部資料，我這裡沒有連外查詢能力，所以先不亂答。"
+    if any(term in question for term in ("股票", "投資建議", "醫生", "診斷", "法律", "律師", "報稅")):
+        return "這題可能牽涉專業判斷，我只能查節目中是否提過相關內容，不能當成建議。"
+    if any(term in question for term in ("講笑話", "唱歌", "寫程式", "作業", "算命", "星座")):
+        return "這題有點超出節目查詢範圍，我先把自己收斂一點。"
+    return "這題看起來不像在查節目、書籍或概念，我先不硬答。"
+
+
+def _looks_off_topic(question: str) -> bool:
+    if not question.strip():
+        return True
+
+    if _has_podcast_query_intent(question):
+        return False
+
+    off_topic_terms = {
+        "你是誰",
+        "你會什麼",
+        "help",
+        "使用說明",
+        "天氣",
+        "幾點",
+        "現在時間",
+        "匯率",
+        "股價",
+        "新聞",
+        "路況",
+        "股票",
+        "投資建議",
+        "醫生",
+        "診斷",
+        "法律",
+        "律師",
+        "報稅",
+        "講笑話",
+        "唱歌",
+        "寫程式",
+        "作業",
+        "算命",
+        "星座",
+    }
+    normalized_question = question.lower()
+    return any(term in normalized_question for term in off_topic_terms)
+
+
+def _has_podcast_query_intent(question: str) -> bool:
+    intent_patterns = [
+        r"\bep\.?\s*\d{1,4}\b",
+        r"第\s*\d{1,4}\s*集",
+        r"\b\d{1,4}\s*集",
+    ]
+    if any(re.search(pattern, question, flags=re.IGNORECASE) for pattern in intent_patterns):
+        return True
+
+    intent_terms = {
+        "引書店",
+        "節目",
+        "集數",
+        "哪一集",
+        "哪幾集",
+        "哪集",
+        "有沒有聊過",
+        "有沒有討論",
+        "有沒有提到",
+        "聊過",
+        "討論過",
+        "提到",
+        "提過",
+        "講過",
+        "書",
+        "書籍",
+        "概念",
+        "主題",
+        "逐字稿",
+        "摘要",
+    }
+    return any(term in question for term in intent_terms)
 
 
 def _format_mentions_only_answer(

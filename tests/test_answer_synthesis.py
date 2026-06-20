@@ -8,7 +8,14 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from reference_bot.answer_synthesis import synthesize_answer
-from reference_bot.episodes import ConceptMention, Episode, EpisodeSummary, TranscriptSearchResult
+from reference_bot.episodes import (
+    ConceptCluster,
+    ConceptMention,
+    ConceptRelationship,
+    Episode,
+    EpisodeSummary,
+    TranscriptSearchResult,
+)
 
 
 class AnswerSynthesisTests(unittest.TestCase):
@@ -33,6 +40,24 @@ class AnswerSynthesisTests(unittest.TestCase):
                         name="職業倦怠",
                         mention_level="main_focus",
                         evidence="整集主題。",
+                    )
+                ],
+                concept_clusters=[
+                    ConceptCluster(
+                        episode=episode,
+                        cluster_name="工作心理",
+                        mention_name="職業倦怠",
+                        mention_level="main_focus",
+                        evidence="職業倦怠被歸在工作心理脈絡。",
+                    )
+                ],
+                concept_relationships=[
+                    ConceptRelationship(
+                        episode=episode,
+                        source_name="職業倦怠",
+                        relation_type="similar_to",
+                        target_name="工作耗損",
+                        evidence="兩者在本集被放在相近脈絡討論。",
                     )
                 ],
                 summaries=[
@@ -65,6 +90,10 @@ class AnswerSynthesisTests(unittest.TestCase):
         self.assertIn("EP.369《終結職業倦怠》", user_message)
         self.assertIn("概念索引", user_message)
         self.assertIn("職業倦怠｜main_focus", user_message)
+        self.assertIn("概念地圖", user_message)
+        self.assertIn("工作心理 -> 職業倦怠", user_message)
+        self.assertIn("概念關係", user_message)
+        self.assertIn("職業倦怠 similar_to 工作耗損", user_message)
         self.assertIn("好人容易心力交瘁", user_message)
         self.assertIn("逐字稿提到 burnout", user_message)
 

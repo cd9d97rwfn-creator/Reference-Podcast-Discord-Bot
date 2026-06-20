@@ -13,6 +13,8 @@ Environment：
 
 - `DISCORD_TOKEN`: Discord Bot Token
 - `DATABASE_PATH`: `episodes.sqlite3`
+- `OPENAI_API_KEY`: 讓 `/ask` 使用 OpenAI 整理回答；沒有設定時會退回保守搜尋結果
+- `OPENAI_ASK_MODEL`: `gpt-4.1-mini`
 - `DISCORD_GUILD_IDS`: 測試伺服器 ID，多個用逗號分隔（選填）
 
 儲存後使用 Manual Deploy → Clear build cache & deploy。

@@ -13,5 +13,9 @@ services:
         value: episodes.sqlite3
       - key: DISCORD_TOKEN
         sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_ASK_MODEL
+        value: gpt-4.1-mini
       - key: DISCORD_GUILD_IDS
         sync: false

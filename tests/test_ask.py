@@ -11,9 +11,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from reference_bot.ask import answer_question
 from reference_bot.concept_map import index_concept_map
-from reference_bot.episodes import ConceptMention, Episode, EpisodeSummary
+from reference_bot.episodes import ConceptCluster, ConceptMention, ConceptRelationship, Episode, EpisodeSummary
 from reference_bot.storage import (
+    replace_concept_clusters,
     replace_concept_mentions,
+    replace_concept_relationships,
     replace_transcript_chunks,
     upsert_episode_summary,
     upsert_episodes,
@@ -56,8 +58,34 @@ class AskTests(unittest.TestCase):
                     )
                 ],
             )
+            replace_concept_clusters(
+                database_path,
+                episode.guid,
+                [
+                    ConceptCluster(
+                        episode=episode,
+                        cluster_name="工作心理",
+                        mention_name="職業倦怠",
+                        mention_level="main_focus",
+                        evidence="職業倦怠被歸在工作心理脈絡。",
+                    )
+                ],
+            )
+            replace_concept_relationships(
+                database_path,
+                episode.guid,
+                [
+                    ConceptRelationship(
+                        episode=episode,
+                        source_name="職業倦怠",
+                        relation_type="similar_to",
+                        target_name="工作耗損",
+                        evidence="兩者在本集被放在相近脈絡討論。",
+                    )
+                ],
+            )
 
-            with patch("reference_bot.ask.synthesize_answer", return_value="有，EP.369 很相關。"):
+            with patch("reference_bot.ask.synthesize_answer", return_value="有，EP.369 很相關。") as synthesize:
                 result = answer_question(
                     database_path=database_path,
                     question="有沒有討論職業倦怠？",
@@ -68,7 +96,11 @@ class AskTests(unittest.TestCase):
             self.assertTrue(result.used_llm)
             self.assertEqual(result.answer, "有，EP.369 很相關。")
             self.assertEqual(result.concept_mentions[0].name, "職業倦怠")
+            self.assertEqual(result.concept_clusters[0].cluster_name, "工作心理")
+            self.assertEqual(result.concept_relationships[0].target_name, "工作耗損")
             self.assertEqual(result.summaries[0].episode.title, "EP.369《終結職業倦怠》")
+            self.assertEqual(synthesize.call_args.kwargs["concept_clusters"][0].cluster_name, "工作心理")
+            self.assertEqual(synthesize.call_args.kwargs["concept_relationships"][0].target_name, "工作耗損")
 
     def test_answer_question_falls_back_without_api_key(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -247,6 +279,37 @@ class AskTests(unittest.TestCase):
             self.assertEqual(result.concept_clusters[0].cluster_name, "財富")
             self.assertIn("概念地圖：財富 -> 財富階梯六級", result.answer)
             self.assertIn("關係：財富 expands_on 財富階梯六級", result.answer)
+
+    def test_answer_question_redirects_obvious_off_topic_questions(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            database_path = str(Path(temporary_directory) / "episodes.sqlite3")
+
+            result = answer_question(
+                database_path=database_path,
+                question="今天台北天氣怎麼樣？",
+                api_key=None,
+            )
+
+            self.assertFalse(result.used_llm)
+            self.assertIn("需要即時外部資料", result.answer)
+            self.assertIn("引書店 Podcast", result.answer)
+            self.assertIn("EP.375", result.answer)
+            self.assertNotIn("summary index 或逐字稿 chunks", result.answer)
+
+    def test_answer_question_keeps_keyword_hint_for_unmatched_podcast_queries(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            database_path = str(Path(temporary_directory) / "episodes.sqlite3")
+
+            result = answer_question(
+                database_path=database_path,
+                question="有沒有聊過火星移民？",
+                api_key=None,
+            )
+
+            self.assertFalse(result.used_llm)
+            self.assertIn("目前沒有在 summary index 或逐字稿 chunks", result.answer)
+            self.assertIn("再試 `/ask`", result.answer)
+            self.assertNotIn("不像在查節目", result.answer)
 
 
 if __name__ == "__main__":
