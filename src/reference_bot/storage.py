@@ -1517,7 +1517,7 @@ def _episode_sort_key(episode: Episode) -> tuple[int, int, datetime]:
 
 
 def _episode_number(title: str) -> int | None:
-    match = re.match(r"^\s*EP\.?\s*(\d+)", title, flags=re.IGNORECASE)
+    match = re.search(r"\bEP\.?\s*(\d+)", title, flags=re.IGNORECASE)
     if match is None:
         return None
     return int(match.group(1))

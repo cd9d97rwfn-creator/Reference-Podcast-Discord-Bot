@@ -83,7 +83,6 @@ Then test in Discord:
 
 ```text
 /ping
-/episodes
 /ask 財富或資產累積相關的集數
 ```
 
@@ -111,3 +110,45 @@ https://discord.com/oauth2/authorize?client_id=YOUR_APPLICATION_ID&permissions=2
 Replace `YOUR_APPLICATION_ID` with the application ID from Discord Developer Portal.
 
 For beta testing, set `DISCORD_GUILD_ID` to the 引書店 server ID in the cloud environment. This makes slash command sync faster and keeps the command rollout scoped to that server while testing.
+
+## Scheduled Corpus Refresh
+
+The bot runtime should not depend on manual local pushes for new episodes. GitHub Actions owns the refresh loop:
+
+1. `.github/workflows/podcast-refresh.yml` runs daily at 05:30 Asia/Taipei and can be triggered manually.
+2. The workflow runs `reference-refresh-corpus --limit 3`.
+3. The command syncs RSS, downloads pending formal episodes, transcribes with OpenAI, exports transcript and summary notes, rebuilds indexes, and deletes downloaded audio after successful transcription.
+4. If `data/episodes.sqlite3` changed, the workflow commits and pushes it back to the repository.
+5. The cloud deployment should rebuild/redeploy from that push.
+
+Set these GitHub repository secrets:
+
+- `PODCAST_RSS_URL`
+- `OPENAI_API_KEY`
+
+Keep these files out of git:
+
+- `data/audio/`
+- `data/transcripts/`
+- `.openai-audio-chunks/`
+- `.env`
+
+Only `data/episodes.sqlite3` is committed as the deployed query corpus.
+
+## Local Scheduled Refresh
+
+If this Mac should be the corpus builder, use `reference-local-refresh-deploy` instead of relying on manual pushes:
+
+```bash
+reference-local-refresh-deploy --limit 3
+```
+
+That command refreshes the corpus, commits `data/episodes.sqlite3`, pushes to GitHub, and optionally calls `RENDER_DEPLOY_HOOK_URL`.
+
+Install the daily LaunchAgent:
+
+```bash
+scripts/install_local_refresh_launchd.sh
+```
+
+See [Local Automation](local-automation.md) for logs, schedule overrides, and uninstall instructions.

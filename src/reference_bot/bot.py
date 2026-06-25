@@ -20,14 +20,6 @@ from reference_bot.episodes import (
     EpisodeSummary,
     TranscriptSearchResult,
 )
-from reference_bot.storage import (
-    list_indexed_episodes,
-    search_book_mentions,
-    search_concept_clusters,
-    search_concept_mentions,
-    search_concept_relationships,
-    search_transcript_chunks,
-)
 
 
 LOGGER = logging.getLogger(__name__)
@@ -41,15 +33,17 @@ class ReferenceBot(discord.Client):
         self.tree = app_commands.CommandTree(self)
 
     async def setup_hook(self) -> None:
-        self.tree.add_command(ping)
-        self.tree.add_command(episodes)
-        self.tree.add_command(ask)
+        for command in _public_commands():
+            self.tree.add_command(command)
 
         if self.settings.discord_guild_id is not None:
             guild = discord.Object(id=self.settings.discord_guild_id)
             self.tree.copy_global_to(guild=guild)
             await self.tree.sync(guild=guild)
             LOGGER.info("Synced slash commands to guild %s", self.settings.discord_guild_id)
+            self.tree.clear_commands(guild=None)
+            await self.tree.sync()
+            LOGGER.info("Cleared global slash commands")
             return
 
         await self.tree.sync()
@@ -59,48 +53,6 @@ class ReferenceBot(discord.Client):
 @app_commands.command(name="ping", description="Check whether the bot is running.")
 async def ping(interaction: discord.Interaction) -> None:
     await interaction.response.send_message("Pong!")
-
-
-@app_commands.command(name="episodes", description="List recently indexed podcast episodes.")
-@app_commands.describe(limit="Number of episodes to show.")
-async def episodes(interaction: discord.Interaction, limit: int = 5) -> None:
-    await interaction.response.defer()
-    database_path = _database_path(interaction)
-    safe_limit = max(1, min(limit, 10))
-    indexed_episodes = list_indexed_episodes(database_path, limit=safe_limit)
-    await interaction.followup.send(_format_episodes_response(indexed_episodes))
-
-
-@app_commands.command(name="book", description="Search indexed book mentions.")
-@app_commands.describe(query="Book title or keyword to search for.", limit="Number of matches to show.")
-async def book(interaction: discord.Interaction, query: str, limit: int = 5) -> None:
-    await interaction.response.defer()
-    database_path = _database_path(interaction)
-    safe_limit = max(1, min(limit, 10))
-    results = search_book_mentions(database_path, query=query, limit=safe_limit)
-    await interaction.followup.send(_format_book_response(query, results))
-
-
-@app_commands.command(name="topic", description="Search indexed topic or concept mentions.")
-@app_commands.describe(query="Topic or concept to search for.", limit="Number of matches to show.")
-async def topic(interaction: discord.Interaction, query: str, limit: int = 5) -> None:
-    await interaction.response.defer()
-    database_path = _database_path(interaction)
-    safe_limit = max(1, min(limit, 10))
-    results = search_concept_mentions(database_path, query=query, limit=safe_limit)
-    clusters = search_concept_clusters(database_path, query=query, limit=safe_limit)
-    relationships = search_concept_relationships(database_path, query=query, limit=safe_limit)
-    await interaction.followup.send(_format_topic_response(query, results, clusters, relationships))
-
-
-@app_commands.command(name="mentioned", description="Search whether the podcast mentioned a word or phrase.")
-@app_commands.describe(query="Word or phrase to search for.", limit="Number of matches to show.")
-async def mentioned(interaction: discord.Interaction, query: str, limit: int = 5) -> None:
-    await interaction.response.defer()
-    database_path = _database_path(interaction)
-    safe_limit = max(1, min(limit, 10))
-    results = search_transcript_chunks(database_path, query=query, limit=safe_limit)
-    await interaction.followup.send(_format_mentioned_response(query, results))
 
 
 @app_commands.command(name="ask", description="Ask a simple natural-language question about indexed episodes.")
@@ -116,6 +68,14 @@ async def ask(interaction: discord.Interaction, question: str) -> None:
         model=os.getenv("OPENAI_ASK_MODEL", DEFAULT_ASK_MODEL).strip() or DEFAULT_ASK_MODEL,
     )
     await interaction.followup.send(_truncate_discord_message(result.answer))
+
+
+def _public_commands() -> tuple[app_commands.Command, ...]:
+    return (ping, ask)
+
+
+def _public_command_names() -> tuple[str, ...]:
+    return tuple(command.name for command in _public_commands())
 
 
 def _database_path(interaction: discord.Interaction) -> str:

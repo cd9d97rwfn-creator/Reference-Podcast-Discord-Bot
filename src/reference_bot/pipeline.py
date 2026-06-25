@@ -416,7 +416,7 @@ def _should_skip_episode(title: str, *, skip_promotional: bool, formal_episodes_
 
 
 def _is_formal_episode_title(title: str) -> bool:
-    return re.match(r"^\s*EP\.?\s*\d+", title, flags=re.IGNORECASE) is not None
+    return re.search(r"\bEP\.?\s*\d+", title, flags=re.IGNORECASE) is not None
 
 
 def _is_promotional_title(title: str) -> bool:

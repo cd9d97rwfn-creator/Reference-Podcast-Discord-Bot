@@ -18,14 +18,12 @@ pip install -e .
 reference-bot
 ```
 
-## Current Commands
+## Current Discord Commands
 
-- `/ping` replies with `Pong!`
-- `/episodes` lists recently indexed episodes.
-- `/book query` searches indexed book mentions.
-- `/topic query` searches indexed topic and concept mentions.
-- `/mentioned query` searches indexed transcript chunks.
-- `/ask question` answers simple natural-language questions such as `375集在講什麼`.
+See [Discord user guide](docs/discord-user-guide.md) for a short user-facing explanation.
+
+- `/ping` checks whether the bot is running.
+- `/ask question` answers natural-language questions such as `375集在講什麼`.
 
 ## RSS Sync
 
@@ -52,6 +50,21 @@ reference-run-pipeline --limit 1 --transcription-provider openai --openai-summar
 ```
 
 This uses `ffmpeg` to split long audio into small M4A chunks for OpenAI's audio transcription API, then exports a transcript note and an episode summary note with `Corrections` and `Feedback Log` sections for later human review. The splitter uses `FFMPEG_BIN` when set, then `ffmpeg` from `PATH`, then the bundled `imageio-ffmpeg` binary as a fallback.
+
+Run the production refresh command used by scheduled automation:
+
+```bash
+reference-refresh-corpus --limit 3
+```
+
+This syncs RSS, downloads and transcribes pending formal episodes with OpenAI, exports transcript and summary notes, deletes downloaded audio after successful transcription, rebuilds book/concept indexes and the concept map, then runs a data-only healthcheck.
+
+The GitHub Actions workflow `.github/workflows/podcast-refresh.yml` runs this command daily and can also be triggered manually. When `data/episodes.sqlite3` changes, the workflow commits and pushes the refreshed database back to the repository so the deployed bot can be rebuilt from the updated corpus. Configure these repository secrets:
+
+- `PODCAST_RSS_URL`
+- `OPENAI_API_KEY`
+
+To let this Mac produce and deploy new corpus updates locally without manual pushes, see [Local Automation](docs/local-automation.md). The local job runs `reference-local-refresh-deploy`, commits `data/episodes.sqlite3`, pushes to GitHub, and lets the cloud service redeploy from that push.
 
 List the latest imported episodes:
 

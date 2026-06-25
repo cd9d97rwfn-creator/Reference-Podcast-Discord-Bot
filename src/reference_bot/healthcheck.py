@@ -33,13 +33,15 @@ def run_healthcheck(
     min_transcript_episodes: int = 50,
     min_eval_pass: int = 12,
     run_eval: bool = True,
+    include_environment: bool = True,
 ) -> HealthReport:
     checks: list[HealthCheck] = []
     path = Path(database_path)
 
     if not path.exists():
         checks.append(HealthCheck("FAIL", "database", f"missing: {database_path}"))
-        checks.extend(_environment_checks())
+        if include_environment:
+            checks.extend(_environment_checks())
         return HealthReport(checks)
 
     checks.append(HealthCheck("OK", "database", f"found: {database_path}"))
@@ -48,7 +50,8 @@ def run_healthcheck(
         counts = _database_counts(path)
     except sqlite3.Error as exc:
         checks.append(HealthCheck("FAIL", "database", f"cannot read SQLite database: {exc}"))
-        checks.extend(_environment_checks())
+        if include_environment:
+            checks.extend(_environment_checks())
         return HealthReport(checks)
 
     checks.append(
@@ -118,7 +121,8 @@ def run_healthcheck(
     else:
         checks.append(HealthCheck("WARN", "concept_map_eval", "skipped"))
 
-    checks.extend(_environment_checks())
+    if include_environment:
+        checks.extend(_environment_checks())
     return HealthReport(checks)
 
 
@@ -202,6 +206,7 @@ def main() -> None:
     parser.add_argument("--min-transcript-episodes", type=int, default=50)
     parser.add_argument("--min-eval-pass", type=int, default=12)
     parser.add_argument("--skip-eval", action="store_true")
+    parser.add_argument("--skip-env", action="store_true")
     args = parser.parse_args()
 
     report = run_healthcheck(
@@ -211,6 +216,7 @@ def main() -> None:
         min_transcript_episodes=args.min_transcript_episodes,
         min_eval_pass=args.min_eval_pass,
         run_eval=not args.skip_eval,
+        include_environment=not args.skip_env,
     )
     print(format_health_report(report))
     raise SystemExit(0 if report.ok else 1)

@@ -317,6 +317,35 @@ class StorageTests(unittest.TestCase):
 
             self.assertEqual([episode.guid for episode in episodes], ["ep-376", "ep-41"])
 
+    def test_list_pending_downloads_reads_embedded_episode_number_for_sorting(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            database_path = str(Path(temporary_directory) / "episodes.sqlite3")
+            upsert_episodes(
+                database_path,
+                [
+                    Episode(
+                        guid="ep-41",
+                        title="EP.41「行為」",
+                        published_at="Tue, 02 Jun 2026 00:00:00 +0800",
+                        episode_url=None,
+                        audio_url="https://example.com/audio/41.mp3",
+                        description=None,
+                    ),
+                    Episode(
+                        guid="special-300",
+                        title="【聯名特企SP9】EP.300《正式編號特企》",
+                        published_at="Mon, 01 Jun 2026 00:00:00 +0800",
+                        episode_url=None,
+                        audio_url="https://example.com/audio/300.mp3",
+                        description=None,
+                    ),
+                ],
+            )
+
+            episodes = list_pending_downloads(database_path, limit=2)
+
+            self.assertEqual([episode.guid for episode in episodes], ["special-300", "ep-41"])
+
     def test_list_pending_downloads_excludes_deleted_audio(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             database_path = str(Path(temporary_directory) / "episodes.sqlite3")

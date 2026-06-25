@@ -10,7 +10,7 @@ services:
       - key: PYTHON_VERSION
         value: 3.12.8
       - key: DATABASE_PATH
-        value: episodes.sqlite3
+        value: data/episodes.sqlite3
       - key: DISCORD_TOKEN
         sync: false
       - key: OPENAI_API_KEY
