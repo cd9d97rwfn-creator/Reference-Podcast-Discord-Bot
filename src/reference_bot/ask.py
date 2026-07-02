@@ -206,10 +206,15 @@ def _format_no_match_answer(question: str) -> str:
     if _looks_off_topic(question):
         return _format_off_topic_answer(question)
 
+    return format_podcast_no_match_answer(question)
+
+
+def format_podcast_no_match_answer(question: str) -> str:
     return (
         f"你問：{question}\n\n"
-        "目前沒有在 summary index 或逐字稿 chunks 找到明確相關內容。"
-        "如果你知道可能的關鍵字，可以換個問法再試 `/ask`。"
+        "喵，我剛剛幫你翻了一下引書店的摘要書架和逐字稿抽屜，"
+        "目前還沒有找到很明確相關的內容。\n\n"
+        "你可以丟給我更接近節目用語的關鍵字，或換個問法再試一次 `/ask`。"
     )
 
 

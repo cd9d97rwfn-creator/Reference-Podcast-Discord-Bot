@@ -9,7 +9,7 @@ import discord
 from discord import app_commands
 
 from reference_bot.answer_synthesis import DEFAULT_ASK_MODEL
-from reference_bot.ask import answer_question
+from reference_bot.ask import answer_question, format_podcast_no_match_answer
 from reference_bot.config import Settings, load_settings
 from reference_bot.episodes import (
     BookMention,
@@ -208,11 +208,7 @@ def _format_natural_language_answer(
     transcript_results: list[TranscriptSearchResult],
 ) -> str:
     if not summaries and not transcript_results:
-        return (
-            f"你問：{question}\n\n"
-            "目前沒有在 summary index 或逐字稿 chunks 找到明確相關內容。"
-            "如果你知道可能的關鍵字，可以換個問法再試 `/ask`。"
-        )
+        return format_podcast_no_match_answer(question)
 
     lines = [f"你問：{question}", ""]
     if summaries:

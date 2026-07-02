@@ -307,8 +307,11 @@ class AskTests(unittest.TestCase):
             )
 
             self.assertFalse(result.used_llm)
-            self.assertIn("目前沒有在 summary index 或逐字稿 chunks", result.answer)
-            self.assertIn("再試 `/ask`", result.answer)
+            self.assertIn("喵", result.answer)
+            self.assertIn("引書店", result.answer)
+            self.assertIn("逐字稿抽屜", result.answer)
+            self.assertIn("關鍵字", result.answer)
+            self.assertIn("再試一次 `/ask`", result.answer)
             self.assertNotIn("不像在查節目", result.answer)
 
 
