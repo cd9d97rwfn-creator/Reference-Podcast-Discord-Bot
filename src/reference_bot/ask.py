@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import random
 import re
 
 from reference_bot.answer_synthesis import DEFAULT_ASK_MODEL, synthesize_answer
@@ -20,6 +21,27 @@ from reference_bot.storage import (
     search_concept_relationships,
     search_episode_summaries,
     search_transcript_chunks,
+)
+
+
+PODCAST_NO_MATCH_RESPONSES = (
+    (
+        "喵，我剛剛幫你翻了一下引書店的摘要書架和逐字稿抽屜，"
+        "目前還沒有找到很明確相關的內容。\n\n"
+        "你可以丟給我更接近節目用語的關鍵字，或換個問法再試一次 `/ask`。"
+    ),
+    (
+        "引書店的貓咪店員認真巡了一圈索引櫃，這題目前沒有明確命中的集數或逐字稿片段。\n\n"
+        "如果你記得主持人可能用過的詞，換一個關鍵字再用 `/ask` 問我，我會再幫你找一次。"
+    ),
+    (
+        "喵嗚，這一題我暫時沒有叼到引書店的可靠線索。摘要和逐字稿裡都沒有很像的內容。\n\n"
+        "你可以把問題問得更靠近書名、作者、概念詞，再用 `/ask` 叫貓咪店員幫你翻一輪。"
+    ),
+    (
+        "我先把爪子收好，保守回答：目前引書店索引裡沒有找到足夠明確的證據。\n\n"
+        "可以試著換成更具體的關鍵字，例如書名、人物、概念或某一集的線索，再用 `/ask` 問我。"
+    ),
 )
 
 
@@ -212,9 +234,7 @@ def _format_no_match_answer(question: str) -> str:
 def format_podcast_no_match_answer(question: str) -> str:
     return (
         f"你問：{question}\n\n"
-        "喵，我剛剛幫你翻了一下引書店的摘要書架和逐字稿抽屜，"
-        "目前還沒有找到很明確相關的內容。\n\n"
-        "你可以丟給我更接近節目用語的關鍵字，或換個問法再試一次 `/ask`。"
+        f"{random.choice(PODCAST_NO_MATCH_RESPONSES)}"
     )
 
 

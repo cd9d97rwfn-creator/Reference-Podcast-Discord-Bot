@@ -9,7 +9,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from reference_bot.ask import answer_question
+from reference_bot.ask import PODCAST_NO_MATCH_RESPONSES, answer_question
 from reference_bot.concept_map import index_concept_map
 from reference_bot.episodes import ConceptCluster, ConceptMention, ConceptRelationship, Episode, EpisodeSummary
 from reference_bot.storage import (
@@ -307,12 +307,20 @@ class AskTests(unittest.TestCase):
             )
 
             self.assertFalse(result.used_llm)
-            self.assertIn("喵", result.answer)
             self.assertIn("引書店", result.answer)
-            self.assertIn("逐字稿抽屜", result.answer)
             self.assertIn("關鍵字", result.answer)
-            self.assertIn("再試一次 `/ask`", result.answer)
+            self.assertIn("`/ask`", result.answer)
             self.assertNotIn("不像在查節目", result.answer)
+
+    def test_no_match_responses_offer_four_cat_clerk_personalities(self) -> None:
+        self.assertEqual(len(PODCAST_NO_MATCH_RESPONSES), 4)
+        for response in PODCAST_NO_MATCH_RESPONSES:
+            with self.subTest(response=response):
+                self.assertTrue(any(term in response for term in ("喵", "貓咪店員", "爪子")))
+                self.assertIn("引書店", response)
+                self.assertTrue(any(term in response for term in ("關鍵字", "書名", "概念", "問我")))
+                self.assertIn("`/ask`", response)
+                self.assertNotIn("summary index", response)
 
 
 if __name__ == "__main__":
