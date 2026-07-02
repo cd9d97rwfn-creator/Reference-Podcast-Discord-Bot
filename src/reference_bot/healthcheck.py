@@ -172,12 +172,22 @@ def _positive_check(name: str, value: int, label: str) -> HealthCheck:
 def _environment_checks() -> list[HealthCheck]:
     checks = [
         _required_secret_check("DISCORD_TOKEN", "required to run the Discord bot"),
-        _optional_value_check("DISCORD_GUILD_ID", "optional; useful for faster slash command sync"),
+        _discord_guild_ids_check(),
         _optional_value_check("DATABASE_PATH", "optional; defaults to data/episodes.sqlite3"),
         _optional_value_check("OPENAI_API_KEY", "optional; enables LLM answer synthesis"),
         _optional_value_check("PODCAST_RSS_URL", "optional for bot runtime; required for RSS refresh"),
     ]
     return checks
+
+
+def _discord_guild_ids_check() -> HealthCheck:
+    plural = os.getenv("DISCORD_GUILD_IDS", "").strip()
+    singular = os.getenv("DISCORD_GUILD_ID", "").strip()
+    if plural and not plural.startswith("replace-with"):
+        return HealthCheck("OK", "DISCORD_GUILD_IDS", "set; syncs slash commands to listed guilds")
+    if singular and not singular.startswith("replace-with"):
+        return HealthCheck("OK", "DISCORD_GUILD_ID", "set; syncs slash commands to one guild")
+    return HealthCheck("WARN", "DISCORD_GUILD_IDS", "not set; slash command sync falls back to global rollout")
 
 
 def _required_secret_check(name: str, detail: str) -> HealthCheck:

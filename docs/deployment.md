@@ -31,7 +31,7 @@ Run it locally with environment variables:
 ```bash
 docker run --rm \
   --env DISCORD_TOKEN="$DISCORD_TOKEN" \
-  --env DISCORD_GUILD_ID="$DISCORD_GUILD_ID" \
+  --env DISCORD_GUILD_IDS="$DISCORD_GUILD_IDS" \
   --env PODCAST_RSS_URL="$PODCAST_RSS_URL" \
   --env OPENAI_API_KEY="$OPENAI_API_KEY" \
   reference-discord-bot
@@ -59,17 +59,23 @@ The Docker image excludes:
 
 ## Cloud Runtime
 
-Use a worker/background service, not a web service. The start command is:
+Use a Render Web Service so the Discord gateway process can run alongside the
+`/health` endpoint Render expects. For the free setup, keep the instance type on
+Free and use the GitHub Actions keepalive workflow to ping `/health` every 10
+minutes. This is a best-effort testing setup, not the same reliability as a paid
+always-on instance.
+
+The start command is:
 
 ```bash
-reference-bot
+python start.py
 ```
 
 Set these environment variables in the cloud dashboard:
 
 - `DISCORD_TOKEN`
-- `DATABASE_PATH=/app/data/episodes.sqlite3`
-- `DISCORD_GUILD_ID` for faster slash-command sync during beta
+- `DATABASE_PATH=data/episodes.sqlite3`
+- `DISCORD_GUILD_IDS` for faster slash-command sync during beta. Use comma-separated server IDs if the bot is invited to multiple Discord servers.
 - `PODCAST_RSS_URL` if the cloud service will later run refresh jobs
 - `OPENAI_API_KEY` only if LLM synthesis is enabled
 
@@ -85,6 +91,10 @@ Then test in Discord:
 /ping
 /ask 財富或資產累積相關的集數
 ```
+
+The free keepalive workflow lives at `.github/workflows/render-keepalive.yml`.
+If the Render service name changes, set the GitHub Actions variable
+`RENDER_KEEPALIVE_URL` to the service's `/health` URL.
 
 ## Add the Bot to the 引書店 Discord
 
@@ -109,7 +119,7 @@ https://discord.com/oauth2/authorize?client_id=YOUR_APPLICATION_ID&permissions=2
 
 Replace `YOUR_APPLICATION_ID` with the application ID from Discord Developer Portal.
 
-For beta testing, set `DISCORD_GUILD_ID` to the 引書店 server ID in the cloud environment. This makes slash command sync faster and keeps the command rollout scoped to that server while testing.
+For beta testing, set `DISCORD_GUILD_IDS` to the 引書店 server ID in the cloud environment. If the same bot is invited to a private test server, include both server IDs separated by commas. This makes slash command sync faster and keeps the command rollout scoped to those servers while testing.
 
 ## Scheduled Corpus Refresh
 

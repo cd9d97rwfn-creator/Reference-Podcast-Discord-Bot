@@ -36,11 +36,12 @@ class ReferenceBot(discord.Client):
         for command in _public_commands():
             self.tree.add_command(command)
 
-        if self.settings.discord_guild_id is not None:
-            guild = discord.Object(id=self.settings.discord_guild_id)
-            self.tree.copy_global_to(guild=guild)
-            await self.tree.sync(guild=guild)
-            LOGGER.info("Synced slash commands to guild %s", self.settings.discord_guild_id)
+        if self.settings.discord_guild_ids:
+            for guild_id in self.settings.discord_guild_ids:
+                guild = discord.Object(id=guild_id)
+                self.tree.copy_global_to(guild=guild)
+                await self.tree.sync(guild=guild)
+                LOGGER.info("Synced slash commands to guild %s", guild_id)
             self.tree.clear_commands(guild=None)
             await self.tree.sync()
             LOGGER.info("Cleared global slash commands")
