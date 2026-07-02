@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import random
 import re
 
 import discord
@@ -23,6 +24,14 @@ from reference_bot.episodes import (
 
 
 LOGGER = logging.getLogger(__name__)
+
+
+PING_RESPONSES = (
+    "喵，店門有開，我也醒著。今天可以幫你查引書店的集數、書和概念。",
+    "在喔。貓咪店員已經坐回櫃檯，資料庫也乖乖待命中。",
+    "喵嗚，連線正常。你可以開始丟問題，我來幫你翻摘要書架和逐字稿抽屜。",
+    "收到。引書店小店員在線，尾巴晃一下表示系統正常。",
+)
 
 
 class ReferenceBot(discord.Client):
@@ -53,7 +62,11 @@ class ReferenceBot(discord.Client):
 
 @app_commands.command(name="ping", description="Check whether the bot is running.")
 async def ping(interaction: discord.Interaction) -> None:
-    await interaction.response.send_message("Pong!")
+    await interaction.response.send_message(_format_ping_response())
+
+
+def _format_ping_response() -> str:
+    return random.choice(PING_RESPONSES)
 
 
 @app_commands.command(name="ask", description="Ask a simple natural-language question about indexed episodes.")

@@ -7,6 +7,7 @@ import unittest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from reference_bot.bot import (
+    PING_RESPONSES,
     _episode_number_from_question,
     _fallback_transcript_query,
     _format_book_response,
@@ -32,6 +33,15 @@ from reference_bot.episodes import (
 class BotResponseTests(unittest.TestCase):
     def test_public_discord_commands_are_limited_to_ping_and_ask(self) -> None:
         self.assertEqual(_public_command_names(), ("ping", "ask"))
+
+    def test_ping_responses_are_warm_cat_clerk_messages(self) -> None:
+        self.assertGreaterEqual(len(PING_RESPONSES), 3)
+        for response in PING_RESPONSES:
+            with self.subTest(response=response):
+                self.assertNotEqual(response, "Pong!")
+                self.assertTrue(response.strip())
+                self.assertTrue(any(term in response for term in ("喵", "貓咪店員", "小店員")))
+                self.assertTrue(any(term in response for term in ("正常", "在線", "醒著", "待命")))
 
     def test_format_episodes_response_lists_indexed_episodes(self) -> None:
         response = _format_episodes_response(
