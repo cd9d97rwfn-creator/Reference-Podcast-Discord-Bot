@@ -13,6 +13,7 @@ from reference_bot.episodes import (
     EpisodeSummary,
     TranscriptSearchResult,
 )
+from reference_bot.normalization import looks_like_cjk, query_terms
 from reference_bot.storage import (
     get_episode_summary_by_number,
     search_book_mentions,
@@ -96,8 +97,28 @@ def answer_question(
         limit=8,
     )
     transcript_results = _first_result_per_episode(transcript_results)
+    used_related_fallback = False
 
-    if api_key and (book_mentions or concept_mentions or summaries or transcript_results):
+    if not (book_mentions or concept_mentions or concept_clusters or concept_relationships or summaries or transcript_results):
+        related_query = _related_concept_query(question)
+        if related_query:
+            book_mentions = search_book_mentions(database_path, query=related_query, limit=5)
+            concept_mentions = search_concept_mentions(database_path, query=related_query, limit=8)
+            concept_clusters = search_concept_clusters(database_path, query=related_query, limit=8)
+            concept_relationships = search_concept_relationships(database_path, query=related_query, limit=8)
+            summaries = search_episode_summaries(database_path, query=related_query, limit=5)
+            transcript_results = search_transcript_chunks(database_path, query=related_query, limit=8)
+            transcript_results = _first_result_per_episode(transcript_results)
+            used_related_fallback = bool(
+                book_mentions
+                or concept_mentions
+                or concept_clusters
+                or concept_relationships
+                or summaries
+                or transcript_results
+            )
+
+    if api_key and not used_related_fallback and (book_mentions or concept_mentions or summaries or transcript_results):
         try:
             answer = synthesize_answer(
                 api_key=api_key,
@@ -132,7 +153,8 @@ def answer_question(
         concept_mentions=concept_mentions,
         concept_clusters=concept_clusters,
         concept_relationships=concept_relationships,
-        transcript_query=_fallback_transcript_query(question),
+        transcript_query=_related_concept_query(question) if used_related_fallback else _fallback_transcript_query(question),
+        used_related_fallback=used_related_fallback,
     )
 
     return AskResult(
@@ -157,13 +179,16 @@ def _format_structured_fallback_answer(
     concept_clusters: list[ConceptCluster],
     concept_relationships: list[ConceptRelationship],
     transcript_query: str,
+    used_related_fallback: bool = False,
 ) -> str:
     has_index_hits = bool(book_mentions or concept_mentions or concept_clusters or concept_relationships)
     if not summaries and not transcript_results and not has_index_hits:
         return _format_no_match_answer(question)
 
     lines = [f"你問：{question}", "", "簡短回答："]
-    if summaries:
+    if used_related_fallback:
+        lines.append("目前沒有找到這個問法的直接命中；但我改用問題中的核心詞找相近概念，先列出可能相關的集數。")
+    elif summaries:
         lines.append("感謝您的詢問，有找到摘要索引中可能相關的集數；下面依集數、橫向概念與證據整理。")
     elif transcript_results and has_index_hits:
         lines.append("有找到索引與逐字稿片段，但目前缺少直接命中的摘要；先把可查到的線索保守列出。")
@@ -218,10 +243,42 @@ def _format_structured_fallback_answer(
     lines.extend(
         [
             "",
-            "注意：這代表目前索引找到相關討論，不等於該集完整摘要了某本書；逐字稿命中也可能只是片段提及。",
+            (
+                "注意：這些是相近概念線索，不代表節目直接討論你原本問的詞；需要用集數內容再確認。"
+                if used_related_fallback
+                else "注意：這代表目前索引找到相關討論，不等於該集完整摘要了某本書；逐字稿命中也可能只是片段提及。"
+            ),
         ]
     )
     return _truncate_discord_message("\n".join(lines))
+
+
+def _related_concept_query(question: str) -> str:
+    terms = query_terms(question)
+    related_terms: list[str] = []
+    for term in terms:
+        if len(term) >= 2:
+            related_terms.append(term)
+        if looks_like_cjk(term):
+            related_terms.extend(_cjk_ngrams(term, size=3))
+            related_terms.extend(_cjk_ngrams(term, size=2))
+    related_terms = [
+        term
+        for term in _dedupe(related_terms)
+        if len(term) >= 2 and term not in terms and not _is_too_generic_related_term(term)
+    ]
+    return " ".join(related_terms[:6])
+
+
+def _cjk_ngrams(value: str, *, size: int) -> list[str]:
+    cjk_characters = [character for character in value if "\u4e00" <= character <= "\u9fff"]
+    if len(cjk_characters) < size:
+        return []
+    return ["".join(cjk_characters[index : index + size]) for index in range(len(cjk_characters) - size + 1)]
+
+
+def _is_too_generic_related_term(term: str) -> bool:
+    return term in {"有沒有", "哪一", "哪幾", "相關", "概念", "主題", "內容", "集數", "討論", "提到"}
 
 
 def _format_no_match_answer(question: str) -> str:

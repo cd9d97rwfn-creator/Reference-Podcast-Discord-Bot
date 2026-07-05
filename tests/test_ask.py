@@ -312,6 +312,45 @@ class AskTests(unittest.TestCase):
             self.assertIn("`/ask`", result.answer)
             self.assertNotIn("不像在查節目", result.answer)
 
+    def test_answer_question_offers_related_concepts_when_direct_query_misses(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            database_path = str(Path(temporary_directory) / "episodes.sqlite3")
+            episode = Episode(
+                guid="episode-1",
+                title="EP.1《滑手機的人》",
+                published_at="Fri, 17 Apr 2026 00:00:00 +0800",
+                episode_url=None,
+                audio_url=None,
+                description=None,
+            )
+            upsert_episodes(database_path, [episode])
+            replace_concept_mentions(
+                database_path,
+                episode.guid,
+                [
+                    ConceptMention(
+                        episode=episode,
+                        name="手機成癮",
+                        mention_level="discussed",
+                        evidence="討論滑手機、注意力與成癮循環。",
+                    )
+                ],
+            )
+
+            with patch("reference_bot.ask.synthesize_answer", return_value="有直接討論。") as synthesize:
+                result = answer_question(
+                    database_path=database_path,
+                    question="有沒有聊過高度手機成癮症？",
+                    api_key="test-key",
+                )
+
+            self.assertFalse(result.used_llm)
+            synthesize.assert_not_called()
+            self.assertIn("沒有找到這個問法的直接命中", result.answer)
+            self.assertIn("相近概念", result.answer)
+            self.assertIn("手機成癮", result.answer)
+            self.assertIn("不代表節目直接討論你原本問的詞", result.answer)
+
     def test_no_match_responses_offer_four_cat_clerk_personalities(self) -> None:
         self.assertEqual(len(PODCAST_NO_MATCH_RESPONSES), 4)
         for response in PODCAST_NO_MATCH_RESPONSES:
