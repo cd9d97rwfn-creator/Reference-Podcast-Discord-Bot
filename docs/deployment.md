@@ -85,6 +85,19 @@ After deployment, check logs for:
 Synced slash commands
 ```
 
+Then check the deployed diagnostics endpoint:
+
+```text
+https://reference-podcast-discord-bot-l4bv.onrender.com/diag.txt
+```
+
+The diagnostics response must show `database_exists: True`, nonzero book/concept
+indexes, 400+ `episodes`, 400+ `transcript_episodes`, and the expected
+`discord_guild_ids_configured` count. If Discord search is empty but diagnostics
+counts are healthy, the likely issue is slash-command/guild configuration rather
+than corpus data. If diagnostics shows an empty or missing database, fix
+`DATABASE_PATH` or redeploy from a commit that includes `data/episodes.sqlite3`.
+
 Then test in Discord:
 
 ```text

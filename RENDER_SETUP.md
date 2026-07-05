@@ -23,6 +23,24 @@ Environment：
 如果 bot 在線但 `/ask` 沒出現，最常見原因是 `DISCORD_GUILD_IDS` 沒有包含那個 Discord server。加入伺服器 ID 後重新 deploy，log 應該會出現 `Synced slash commands to guild ...`。
 如果你已經把多個 ID 填在舊欄位 `DISCORD_GUILD_ID`，也可以先保留；新版程式會接受逗號分隔。不過 Render 上建議改成 `DISCORD_GUILD_IDS`，避免未來混淆。
 
+## 部署後檢查
+
+每次 Render deploy 後先打開：
+
+```text
+https://reference-podcast-discord-bot-l4bv.onrender.com/diag.txt
+```
+
+正常狀態至少要看到：
+
+- `database_exists: True`
+- `episodes` 大於 400
+- `transcript_episodes` 大於 400
+- `book_mentions`、`concept_mentions` 都大於 0
+- `discord_guild_ids_configured` 是預期的 Discord server 數量
+
+如果 `/ask 納瓦爾寶典` 在 Discord 沒結果，但 `/diag.txt` 的索引筆數正常，優先檢查 `DISCORD_GUILD_IDS` 是否包含你正在搜尋的 server。若索引筆數是 0 或 database missing，代表 Render 沒拿到正確的 `data/episodes.sqlite3` 或 `DATABASE_PATH` 設錯。
+
 ## 免費 Keepalive
 
 這個 repo 有 `.github/workflows/render-keepalive.yml`，會每 10 分鐘打一次：
