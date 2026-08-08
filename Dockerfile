@@ -16,4 +16,4 @@ RUN python -m pip install --no-cache-dir --upgrade pip \
 HEALTHCHECK --interval=5m --timeout=30s --start-period=30s --retries=3 \
     CMD reference-healthcheck --skip-eval || exit 1
 
-CMD ["reference-bot"]
+CMD ["python", "start.py"]

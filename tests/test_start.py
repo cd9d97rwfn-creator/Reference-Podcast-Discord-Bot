@@ -36,6 +36,7 @@ class StartDiagnosticsTests(unittest.TestCase):
         self.assertTrue(diagnostics["database_exists"])
         self.assertEqual(diagnostics["discord_guild_ids_configured"], 2)
         self.assertEqual(diagnostics["discord_guild_ids_source"], "DISCORD_GUILD_IDS")
+        self.assertEqual(diagnostics["deployment_git_commit"], "abcdef123456")
         self.assertEqual(diagnostics["render_git_commit"], "abcdef123456")
         self.assertEqual(diagnostics["counts"]["episodes"], 1)
         self.assertEqual(diagnostics["counts"]["transcript_chunks"], 2)
@@ -52,6 +53,22 @@ class StartDiagnosticsTests(unittest.TestCase):
         self.assertIn("status: ok", text)
         self.assertIn("database_exists: False", text)
         self.assertIn("discord_guild_ids_configured: 0", text)
+
+    def test_deployment_diagnostics_prefers_railway_commit(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            database_path = Path(temporary_directory) / "missing.sqlite3"
+            with patch.dict(
+                "os.environ",
+                {
+                    "DATABASE_PATH": str(database_path),
+                    "RAILWAY_GIT_COMMIT_SHA": "railway1234567890",
+                    "RENDER_GIT_COMMIT": "render1234567890",
+                },
+                clear=True,
+            ):
+                diagnostics = _deployment_diagnostics()
+
+        self.assertEqual(diagnostics["deployment_git_commit"], "railway12345")
 
     @staticmethod
     def _create_database(database_path: Path) -> None:

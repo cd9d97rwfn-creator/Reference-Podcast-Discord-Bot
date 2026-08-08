@@ -60,7 +60,12 @@ def _deployment_diagnostics() -> dict[str, object]:
     path = Path(database_path)
     guild_ids = os.getenv("DISCORD_GUILD_IDS", "").strip()
     legacy_guild_id = os.getenv("DISCORD_GUILD_ID", "").strip()
-    commit = os.getenv("RENDER_GIT_COMMIT") or os.getenv("RENDER_COMMIT") or ""
+    commit = (
+        os.getenv("RAILWAY_GIT_COMMIT_SHA")
+        or os.getenv("RENDER_GIT_COMMIT")
+        or os.getenv("RENDER_COMMIT")
+        or ""
+    )
 
     diagnostics: dict[str, object] = {
         "status": "ok",
@@ -69,6 +74,7 @@ def _deployment_diagnostics() -> dict[str, object]:
         "database_size_bytes": path.stat().st_size if path.exists() else 0,
         "discord_guild_ids_configured": _configured_guild_count(guild_ids or legacy_guild_id),
         "discord_guild_ids_source": "DISCORD_GUILD_IDS" if guild_ids else "DISCORD_GUILD_ID" if legacy_guild_id else "global",
+        "deployment_git_commit": commit[:12] if commit else "",
         "render_git_commit": commit[:12] if commit else "",
     }
 
@@ -90,6 +96,7 @@ def _deployment_diagnostics_text() -> str:
         f"database_size_bytes: {diagnostics['database_size_bytes']}",
         f"discord_guild_ids_configured: {diagnostics['discord_guild_ids_configured']}",
         f"discord_guild_ids_source: {diagnostics['discord_guild_ids_source']}",
+        f"deployment_git_commit: {diagnostics['deployment_git_commit']}",
         f"render_git_commit: {diagnostics['render_git_commit']}",
     ]
     counts = diagnostics.get("counts")

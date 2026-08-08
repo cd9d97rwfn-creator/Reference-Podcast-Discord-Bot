@@ -57,7 +57,32 @@ The Docker image excludes:
 - Obsidian import folders
 - test caches and Python bytecode
 
-## Cloud Runtime
+## Railway Runtime
+
+Railway deploys this repository with the root `Dockerfile` and `railway.json`.
+The container runs `python start.py`, which keeps the Discord gateway connected
+and serves `/health` and `/diag.txt` on Railway's injected `PORT`.
+
+Create the service from the GitHub repository and set:
+
+- `DISCORD_TOKEN`
+- `DISCORD_GUILD_IDS`
+- `DATABASE_PATH=/app/data/episodes.sqlite3`
+- `OPENAI_API_KEY` when LLM answer synthesis is enabled
+- `OPENAI_ASK_MODEL=gpt-4.1-mini` unless another supported model is preferred
+
+Generate a Railway public domain, then verify `/health` returns `ok` and
+`/diag.txt` reports the expected nonzero corpus counts. Railway should run one
+replica so only one Discord gateway process registers and answers commands.
+
+The production Railway service is a query runtime, not a transcription worker.
+MacWhisper stays local, and the scheduled corpus refresh continues committing
+`data/episodes.sqlite3` to GitHub so each push builds a fresh query image.
+
+Do not attach a Railway volume at `/app/data` unless the refresh architecture is
+also changed: an empty volume would hide the bundled SQLite corpus.
+
+## Legacy Render Runtime
 
 Use a Render Web Service so the Discord gateway process can run alongside the
 `/health` endpoint Render expects. For the free setup, keep the instance type on
