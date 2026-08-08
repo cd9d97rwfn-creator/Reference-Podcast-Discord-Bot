@@ -18,12 +18,13 @@ pip install -e .
 reference-bot
 ```
 
-## Current Discord Commands
+## Current Discord Conversation
 
 See [Discord user guide](docs/discord-user-guide.md) for a short user-facing explanation.
 
-- `/ping` checks whether the bot is running.
-- `/ask question` answers natural-language questions such as `375集在講什麼`.
+- Send the bot a direct message, or mention it in a server and ask a natural-language question such as `@引書店機器人 375集在講什麼`.
+- Slash commands are intentionally removed.
+- Enable **Message Content Intent** for the bot in the Discord Developer Portal.
 
 ## RSS Sync
 
@@ -99,6 +100,8 @@ reference-transcribe-audio --limit 1 --transcripts-dir data/transcripts
 MacWhisper 13.20 or newer includes the `mw` command-line tool. The bot uses `mw` from `PATH` when available, then falls back to `/Applications/MacWhisper.app/Contents/MacOS/mw`. It runs `mw transcribe AUDIO_FILE` and saves stdout as a transcript file. You can override the executable and model with `MACWHISPER_BIN`, `MACWHISPER_MODEL`, `--mw-bin`, or `--model`.
 
 MacWhisper's current CLI prints transcript text only. Generated transcript notes are marked with `transcript_has_timestamps: "false"` until a timestamp-capable export path is added.
+
+Shared transcript policy: podcast ASR may still use OpenAI direct transcription when quality is better for episode terminology, but transcript polishing follows the shared Traditional Chinese transcript agent rules: faithful cleanup, Taiwan Traditional Chinese, readable punctuation and paragraphs, removable non-semantic filler, no summary or rewrite. General standalone audio/video files should be processed in `/Users/marctsai/Documents/音檔轉完美正體中文逐字稿機器人` first.
 
 Import an existing transcript exported from MacWhisper:
 
@@ -187,6 +190,6 @@ The bot can stay online in the cloud as long as the runtime has:
 - `DISCORD_TOKEN`
 - `DATABASE_PATH` pointing to the deployed SQLite file
 - `PODCAST_RSS_URL` if the cloud instance will also refresh RSS/pipeline data
-- `OPENAI_API_KEY` only if `/ask` should use LLM synthesis; without it, `/ask` uses the structured conservative fallback
+- `OPENAI_API_KEY` enables LLM answer synthesis; without it, conversation uses the structured conservative fallback
 
 Run `reference-healthcheck` after copying or mounting the SQLite database. Do not deploy raw audio files unless the cloud instance is responsible for transcription; the Discord query bot only needs the database and package code.

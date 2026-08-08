@@ -16,8 +16,8 @@ from reference_bot.bot import (
     _format_mentioned_response,
     _format_natural_language_answer,
     _format_topic_response,
-    _public_command_names,
     _readable_excerpt,
+    _strip_bot_mention,
 )
 from reference_bot.episodes import (
     BookMention,
@@ -31,8 +31,9 @@ from reference_bot.episodes import (
 
 
 class BotResponseTests(unittest.TestCase):
-    def test_public_discord_commands_are_limited_to_ping_and_ask(self) -> None:
-        self.assertEqual(_public_command_names(), ("ping", "ask"))
+    def test_strip_bot_mention_accepts_both_discord_mention_forms(self) -> None:
+        self.assertEqual(_strip_bot_mention("<@123> 有聊過倦怠嗎？", 123), "有聊過倦怠嗎？")
+        self.assertEqual(_strip_bot_mention("嗨 <@!123>   EP.375 呢", 123), "嗨 EP.375 呢")
 
     def test_ping_responses_are_warm_cat_clerk_messages(self) -> None:
         self.assertGreaterEqual(len(PING_RESPONSES), 3)
@@ -165,7 +166,7 @@ class BotResponseTests(unittest.TestCase):
         self.assertIn("EP.369", response)
         self.assertIn("main_focus", response)
         self.assertIn("summary index", response)
-        self.assertIn("/ask", response)
+        self.assertIn("再問我", response)
 
     def test_format_topic_response_handles_no_matches(self) -> None:
         self.assertIn("沒有找到主題/概念索引命中", _format_topic_response("不存在", []))

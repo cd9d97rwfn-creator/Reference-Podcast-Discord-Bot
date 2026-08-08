@@ -309,7 +309,7 @@ class AskTests(unittest.TestCase):
             self.assertFalse(result.used_llm)
             self.assertIn("引書店", result.answer)
             self.assertIn("關鍵字", result.answer)
-            self.assertIn("`/ask`", result.answer)
+            self.assertIn("問我", result.answer)
             self.assertNotIn("不像在查節目", result.answer)
 
     def test_answer_question_offers_related_concepts_when_direct_query_misses(self) -> None:
@@ -358,7 +358,7 @@ class AskTests(unittest.TestCase):
                 self.assertTrue(any(term in response for term in ("喵", "貓咪店員", "爪子")))
                 self.assertIn("引書店", response)
                 self.assertTrue(any(term in response for term in ("關鍵字", "書名", "概念", "問我")))
-                self.assertIn("`/ask`", response)
+                self.assertNotIn("/ask", response)
                 self.assertNotIn("summary index", response)
 
 

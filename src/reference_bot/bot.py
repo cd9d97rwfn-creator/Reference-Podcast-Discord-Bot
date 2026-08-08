@@ -7,7 +7,6 @@ import random
 import re
 
 import discord
-from discord import app_commands
 
 from reference_bot.answer_synthesis import DEFAULT_ASK_MODEL
 from reference_bot.ask import answer_question, format_podcast_no_match_answer
@@ -37,66 +36,59 @@ PING_RESPONSES = (
 class ReferenceBot(discord.Client):
     def __init__(self, settings: Settings) -> None:
         intents = discord.Intents.default()
+        intents.message_content = True
         super().__init__(intents=intents)
         self.settings = settings
-        self.tree = app_commands.CommandTree(self)
+        self.tree = discord.app_commands.CommandTree(self)
 
     async def setup_hook(self) -> None:
-        for command in _public_commands():
-            self.tree.add_command(command)
-
         if self.settings.discord_guild_ids:
             for guild_id in self.settings.discord_guild_ids:
                 guild = discord.Object(id=guild_id)
-                self.tree.copy_global_to(guild=guild)
+                self.tree.clear_commands(guild=guild)
                 await self.tree.sync(guild=guild)
-                LOGGER.info("Synced slash commands to guild %s", guild_id)
-            self.tree.clear_commands(guild=None)
-            await self.tree.sync()
-            LOGGER.info("Cleared global slash commands")
+                LOGGER.info("Removed slash commands from guild %s", guild_id)
+
+        self.tree.clear_commands(guild=None)
+        await self.tree.sync()
+        LOGGER.info("Removed global slash commands")
+
+    async def on_message(self, message: discord.Message) -> None:
+        if message.author.bot or self.user is None:
             return
 
-        await self.tree.sync()
-        LOGGER.info("Synced global slash commands")
+        is_direct_message = message.guild is None
+        mentions_bot = self.user in message.mentions
+        if not is_direct_message and not mentions_bot:
+            return
 
+        question = _strip_bot_mention(message.content, self.user.id)
+        if not question:
+            await message.reply("直接問我引書店節目、書籍或概念就可以了，喵。", mention_author=False)
+            return
 
-@app_commands.command(name="ping", description="Check whether the bot is running.")
-async def ping(interaction: discord.Interaction) -> None:
-    await interaction.response.send_message(_format_ping_response())
+        if question.casefold() in {"ping", "在嗎", "在嗎？"}:
+            await message.reply(_format_ping_response(), mention_author=False)
+            return
+
+        async with message.channel.typing():
+            result = await asyncio.to_thread(
+                answer_question,
+                database_path=self.settings.database_path,
+                question=question,
+                api_key=os.getenv("OPENAI_API_KEY", "").strip() or None,
+                model=os.getenv("OPENAI_ASK_MODEL", DEFAULT_ASK_MODEL).strip() or DEFAULT_ASK_MODEL,
+            )
+        await message.reply(_truncate_discord_message(result.answer), mention_author=False)
 
 
 def _format_ping_response() -> str:
     return random.choice(PING_RESPONSES)
 
 
-@app_commands.command(name="ask", description="Ask a simple natural-language question about indexed episodes.")
-@app_commands.describe(question="For example: EP.375 在講什麼？")
-async def ask(interaction: discord.Interaction, question: str) -> None:
-    await interaction.response.defer()
-    database_path = _database_path(interaction)
-    result = await asyncio.to_thread(
-        answer_question,
-        database_path=database_path,
-        question=question,
-        api_key=os.getenv("OPENAI_API_KEY", "").strip() or None,
-        model=os.getenv("OPENAI_ASK_MODEL", DEFAULT_ASK_MODEL).strip() or DEFAULT_ASK_MODEL,
-    )
-    await interaction.followup.send(_truncate_discord_message(result.answer))
-
-
-def _public_commands() -> tuple[app_commands.Command, ...]:
-    return (ping, ask)
-
-
-def _public_command_names() -> tuple[str, ...]:
-    return tuple(command.name for command in _public_commands())
-
-
-def _database_path(interaction: discord.Interaction) -> str:
-    client = interaction.client
-    if isinstance(client, ReferenceBot):
-        return client.settings.database_path
-    return "data/episodes.sqlite3"
+def _strip_bot_mention(content: str, bot_user_id: int) -> str:
+    without_mention = re.sub(rf"<@!?{bot_user_id}>", " ", content)
+    return re.sub(r"\s+", " ", without_mention).strip()
 
 
 def _format_episodes_response(indexed_episodes: list[Episode]) -> str:
@@ -157,7 +149,7 @@ def _format_topic_response(
 
     lines = [
         f"主題/概念索引命中：{query}",
-        "注意：這是 summary index 的保守索引；需要時可再用 `/ask` 換關鍵字查逐字稿證據。",
+        "注意：這是 summary index 的保守索引；需要時可換關鍵字再問我查逐字稿證據。",
     ]
     if clusters:
         lines.extend(["", "概念地圖："])

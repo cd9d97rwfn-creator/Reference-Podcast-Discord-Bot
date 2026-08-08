@@ -37,7 +37,7 @@ docker run --rm \
   reference-discord-bot
 ```
 
-If `/ask` should work without LLM synthesis, omit `OPENAI_API_KEY`; the bot will use the structured conservative fallback.
+If conversational answers should work without LLM synthesis, omit `OPENAI_API_KEY`; the bot will use the structured conservative fallback.
 
 ## Files Included
 
@@ -123,11 +123,11 @@ counts are healthy, the likely issue is slash-command/guild configuration rather
 than corpus data. If diagnostics shows an empty or missing database, fix
 `DATABASE_PATH` or redeploy from a commit that includes `data/episodes.sqlite3`.
 
-Then test in Discord:
+Enable **Message Content Intent** in the Discord Developer Portal, then test in Discord:
 
 ```text
-/ping
-/ask 財富或資產累積相關的集數
+@引書店機器人 ping
+@引書店機器人 財富或資產累積相關的集數
 ```
 
 The free keepalive workflow lives at `.github/workflows/render-keepalive.yml`.
