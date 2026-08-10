@@ -6,7 +6,7 @@ ENV DATABASE_PATH=/app/data/episodes.sqlite3
 
 WORKDIR /app
 
-COPY pyproject.toml README.md ./
+COPY pyproject.toml README.md start.py ./
 COPY src ./src
 COPY data/episodes.sqlite3 ./data/episodes.sqlite3
 
