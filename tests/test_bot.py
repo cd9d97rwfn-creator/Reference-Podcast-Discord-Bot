@@ -7,6 +7,7 @@ import unittest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from reference_bot.bot import (
+    BOT_DISPLAY_NAME,
     PING_RESPONSES,
     _episode_number_from_question,
     _fallback_transcript_query,
@@ -41,7 +42,8 @@ class BotResponseTests(unittest.TestCase):
             with self.subTest(response=response):
                 self.assertNotEqual(response, "Pong!")
                 self.assertTrue(response.strip())
-                self.assertTrue(any(term in response for term in ("喵", "貓咪店員", "小店員")))
+                self.assertIn(BOT_DISPLAY_NAME, response)
+                self.assertTrue(any(term in response for term in ("喵", "貓咪工讀生", "尾巴")))
                 self.assertTrue(any(term in response for term in ("正常", "在線", "醒著", "待命")))
 
     def test_format_episodes_response_lists_indexed_episodes(self) -> None:

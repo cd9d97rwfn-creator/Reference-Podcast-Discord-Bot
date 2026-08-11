@@ -23,13 +23,14 @@ from reference_bot.episodes import (
 
 
 LOGGER = logging.getLogger(__name__)
+BOT_DISPLAY_NAME = "引引"
 
 
 PING_RESPONSES = (
-    "喵，店門有開，我也醒著。今天可以幫你查引書店的集數、書和概念。",
-    "在喔。貓咪店員已經坐回櫃檯，資料庫也乖乖待命中。",
-    "喵嗚，連線正常。你可以開始丟問題，我來幫你翻摘要書架和逐字稿抽屜。",
-    "收到。引書店小店員在線，尾巴晃一下表示系統正常。",
+    "喵，店門有開，引引也醒著。今天可以幫你查引書店的集數、書和概念。",
+    "在喔。貓咪工讀生引引已經坐回櫃檯，資料庫也乖乖待命中。",
+    "喵嗚，連線正常。你可以開始丟問題，引引來幫你翻摘要書架和逐字稿抽屜。",
+    "收到。引書店的貓咪工讀生引引在線，尾巴晃一下表示系統正常。",
 )
 
 
@@ -52,6 +53,22 @@ class ReferenceBot(discord.Client):
         self.tree.clear_commands(guild=None)
         await self.tree.sync()
         LOGGER.info("Removed global slash commands")
+
+    async def on_ready(self) -> None:
+        for guild in self.guilds:
+            member = guild.me
+            if member is None or member.nick == BOT_DISPLAY_NAME:
+                continue
+            try:
+                await member.edit(nick=BOT_DISPLAY_NAME, reason="Set the bot persona display name")
+                LOGGER.info("Set bot nickname to %s in guild %s", BOT_DISPLAY_NAME, guild.id)
+            except discord.Forbidden:
+                LOGGER.warning(
+                    "Could not set bot nickname in guild %s; grant the bot Change Nickname permission",
+                    guild.id,
+                )
+            except discord.HTTPException as exc:
+                LOGGER.warning("Could not set bot nickname in guild %s: %s", guild.id, exc)
 
     async def on_message(self, message: discord.Message) -> None:
         if message.author.bot or self.user is None:

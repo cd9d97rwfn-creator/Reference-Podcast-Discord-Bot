@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from reference_bot.answer_synthesis import synthesize_answer
+from reference_bot.answer_synthesis import _system_prompt, synthesize_answer
 from reference_bot.episodes import (
     ConceptCluster,
     ConceptMention,
@@ -19,6 +19,15 @@ from reference_bot.episodes import (
 
 
 class AnswerSynthesisTests(unittest.TestCase):
+    def test_system_prompt_defines_yinyin_cat_bookstore_persona(self) -> None:
+        prompt = _system_prompt()
+
+        self.assertIn("引引", prompt)
+        self.assertIn("貓咪工讀生", prompt)
+        self.assertIn("引書店", prompt)
+        self.assertIn("不要每句都加「喵」", prompt)
+        self.assertIn("精準與可信度永遠優先", prompt)
+
     def test_synthesize_answer_passes_retrieved_context_to_openai(self) -> None:
         episode = Episode(
             guid="episode-369",
