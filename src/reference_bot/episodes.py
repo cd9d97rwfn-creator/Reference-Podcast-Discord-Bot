@@ -46,6 +46,12 @@ class EpisodeSummary:
 
 
 @dataclass(frozen=True)
+class EpisodeAnnouncement:
+    summary: EpisodeSummary
+    announcement_status: str
+
+
+@dataclass(frozen=True)
 class BookMention:
     episode: Episode
     name: str

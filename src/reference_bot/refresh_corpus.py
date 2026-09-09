@@ -5,6 +5,11 @@ from dataclasses import dataclass
 import os
 
 from reference_bot.config import load_rss_settings
+from reference_bot.announcements import (
+    DEFAULT_ANNOUNCEMENT_CHANNEL_ID,
+    DEFAULT_APPLE_PODCASTS_URL,
+    DEFAULT_SPOTIFY_URL,
+)
 from reference_bot.concept_index import index_summary_mentions
 from reference_bot.concept_map import index_concept_map
 from reference_bot.healthcheck import format_health_report, run_healthcheck
@@ -50,6 +55,10 @@ def refresh_corpus(
     mention_limit: int = 500,
     concept_map_limit: int = 500,
     run_eval: bool = False,
+    discord_token: str | None = None,
+    announcement_channel_id: int | None = None,
+    spotify_url: str = DEFAULT_SPOTIFY_URL,
+    apple_podcasts_url: str = DEFAULT_APPLE_PODCASTS_URL,
 ) -> RefreshCorpusResult:
     pipeline_result = run_pipeline(
         feed_url=feed_url,
@@ -71,6 +80,10 @@ def refresh_corpus(
         skip_promotional=True,
         formal_episodes_only=True,
         delete_audio_after_transcription=True,
+        discord_token=discord_token,
+        announcement_channel_id=announcement_channel_id,
+        spotify_url=spotify_url,
+        apple_podcasts_url=apple_podcasts_url,
     )
     summary_episodes, book_mentions, concept_mentions = index_summary_mentions(
         database_path,
@@ -157,6 +170,16 @@ def main() -> None:
         mention_limit=args.mention_limit,
         concept_map_limit=args.concept_map_limit,
         run_eval=args.run_eval,
+        discord_token=os.getenv("DISCORD_TOKEN", "").strip() or None,
+        announcement_channel_id=(
+            _optional_int_env("DISCORD_ANNOUNCEMENT_CHANNEL_ID")
+            or DEFAULT_ANNOUNCEMENT_CHANNEL_ID
+        ),
+        spotify_url=os.getenv("PODCAST_SPOTIFY_URL", DEFAULT_SPOTIFY_URL).strip() or DEFAULT_SPOTIFY_URL,
+        apple_podcasts_url=(
+            os.getenv("PODCAST_APPLE_PODCASTS_URL", DEFAULT_APPLE_PODCASTS_URL).strip()
+            or DEFAULT_APPLE_PODCASTS_URL
+        ),
     )
 
     print("Corpus refresh complete.")
@@ -171,6 +194,16 @@ def main() -> None:
     print(f"Concept map episodes indexed: {result.concept_map_episodes_indexed}")
     print(f"Concept clusters indexed: {result.concept_clusters_indexed}")
     print(f"Concept relationships indexed: {result.concept_relationships_indexed}")
+
+
+def _optional_int_env(variable_name: str) -> int | None:
+    value = os.getenv(variable_name, "").strip()
+    if not value:
+        return None
+    try:
+        return int(value)
+    except ValueError as exc:
+        raise RuntimeError(f"{variable_name} must be a numeric Discord channel ID.") from exc
 
 
 if __name__ == "__main__":

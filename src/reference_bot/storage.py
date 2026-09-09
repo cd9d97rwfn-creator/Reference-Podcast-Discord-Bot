@@ -13,6 +13,7 @@ from reference_bot.episodes import (
     ConceptMention,
     ConceptRelationship,
     Episode,
+    EpisodeAnnouncement,
     EpisodeSummary,
     IndexedTranscript,
     TranscribedEpisode,
@@ -153,6 +154,13 @@ OBSIDIAN_EXPORT_COLUMNS = {
 }
 
 
+ANNOUNCEMENT_COLUMNS = {
+    "announcement_status": "TEXT",
+    "announcement_sent_at": "TEXT",
+    "announcement_error": "TEXT",
+}
+
+
 def initialize_database(database_path: str) -> None:
     path = Path(database_path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -168,6 +176,7 @@ def initialize_database(database_path: str) -> None:
         _ensure_columns(connection, "episodes", AUDIO_DOWNLOAD_COLUMNS)
         _ensure_columns(connection, "episodes", TRANSCRIPTION_COLUMNS)
         _ensure_columns(connection, "episodes", OBSIDIAN_EXPORT_COLUMNS)
+        _ensure_columns(connection, "episodes", ANNOUNCEMENT_COLUMNS)
 
 
 def _ensure_columns(
@@ -438,6 +447,18 @@ def mark_transcript_imported(database_path: str, guid: str, transcript_local_pat
                 transcript_local_path = ?,
                 transcribed_at = CURRENT_TIMESTAMP,
                 transcription_error = NULL,
+                announcement_status = CASE
+                    WHEN transcript_local_path IS NULL THEN 'pending'
+                    ELSE announcement_status
+                END,
+                announcement_sent_at = CASE
+                    WHEN transcript_local_path IS NULL THEN NULL
+                    ELSE announcement_sent_at
+                END,
+                announcement_error = CASE
+                    WHEN transcript_local_path IS NULL THEN NULL
+                    ELSE announcement_error
+                END,
                 obsidian_transcript_path = NULL,
                 obsidian_transcript_status = NULL,
                 obsidian_transcript_exported_at = NULL,
@@ -448,6 +469,95 @@ def mark_transcript_imported(database_path: str, guid: str, transcript_local_pat
             (transcript_local_path, guid),
         )
         return cursor.rowcount > 0
+
+
+def list_pending_episode_announcements(
+    database_path: str,
+    limit: int = 10,
+) -> list[EpisodeAnnouncement]:
+    if limit < 1:
+        raise ValueError("limit must be greater than 0.")
+
+    initialize_database(database_path)
+    with sqlite3.connect(database_path) as connection:
+        rows = connection.execute(
+            """
+            SELECT
+                e.guid,
+                e.title,
+                e.published_at,
+                e.episode_url,
+                e.audio_url,
+                e.description,
+                s.one_sentence_summary,
+                s.key_points_text,
+                s.topics_text,
+                s.summary_note_path,
+                s.generated_by,
+                e.announcement_status
+            FROM episodes AS e
+            JOIN episode_summaries AS s ON s.episode_guid = e.guid
+            WHERE e.announcement_status IN ('pending', 'failed')
+            ORDER BY datetime(e.transcribed_at) ASC, e.guid ASC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+
+    return [
+        EpisodeAnnouncement(
+            summary=EpisodeSummary(
+                episode=Episode(
+                    guid=row[0],
+                    title=row[1],
+                    published_at=row[2],
+                    episode_url=row[3],
+                    audio_url=row[4],
+                    description=row[5],
+                ),
+                one_sentence_summary=row[6],
+                key_points=[line for line in row[7].splitlines() if line.strip()],
+                topics=[line for line in row[8].splitlines() if line.strip()],
+                summary_note_path=row[9],
+                generated_by=row[10],
+            ),
+            announcement_status=row[11],
+        )
+        for row in rows
+    ]
+
+
+def mark_episode_announcement_sent(database_path: str, guid: str) -> None:
+    initialize_database(database_path)
+    with sqlite3.connect(database_path) as connection:
+        connection.execute(
+            """
+            UPDATE episodes
+            SET
+                announcement_status = 'sent',
+                announcement_sent_at = CURRENT_TIMESTAMP,
+                announcement_error = NULL,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE guid = ?
+            """,
+            (guid,),
+        )
+
+
+def mark_episode_announcement_failed(database_path: str, guid: str, error: str) -> None:
+    initialize_database(database_path)
+    with sqlite3.connect(database_path) as connection:
+        connection.execute(
+            """
+            UPDATE episodes
+            SET
+                announcement_status = 'failed',
+                announcement_error = ?,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE guid = ?
+            """,
+            (error, guid),
+        )
 
 
 def mark_transcription_failed(database_path: str, guid: str, error: str) -> None:

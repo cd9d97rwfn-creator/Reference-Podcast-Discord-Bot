@@ -96,7 +96,7 @@ class ReferenceBot(discord.Client):
                 api_key=os.getenv("OPENAI_API_KEY", "").strip() or None,
                 model=os.getenv("OPENAI_ASK_MODEL", DEFAULT_ASK_MODEL).strip() or DEFAULT_ASK_MODEL,
             )
-        await message.reply(_truncate_discord_message(result.answer), mention_author=False)
+        await message.reply(_truncate_discord_message(result.answer), mention_author=True)
 
 
 def _format_ping_response() -> str:

@@ -7,6 +7,11 @@ from pathlib import Path
 import subprocess
 from urllib import request
 
+from reference_bot.announcements import (
+    DEFAULT_ANNOUNCEMENT_CHANNEL_ID,
+    DEFAULT_APPLE_PODCASTS_URL,
+    DEFAULT_SPOTIFY_URL,
+)
 from reference_bot.config import load_rss_settings
 from reference_bot.obsidian import DEFAULT_TRANSCRIPTS_DIR
 from reference_bot.openai_summary import DEFAULT_OPENAI_SUMMARY_MODEL
@@ -49,6 +54,10 @@ def local_refresh_deploy(
     push: bool = True,
     pull_first: bool = True,
     deploy_hook_url: str | None = None,
+    discord_token: str | None = None,
+    announcement_channel_id: int | None = None,
+    spotify_url: str = DEFAULT_SPOTIFY_URL,
+    apple_podcasts_url: str = DEFAULT_APPLE_PODCASTS_URL,
 ) -> LocalRefreshDeployResult:
     repo_path = Path(repo_dir).expanduser().resolve()
     _ensure_git_repo(repo_path)
@@ -75,6 +84,10 @@ def local_refresh_deploy(
         mention_limit=mention_limit,
         concept_map_limit=concept_map_limit,
         run_eval=run_eval,
+        discord_token=discord_token,
+        announcement_channel_id=announcement_channel_id,
+        spotify_url=spotify_url,
+        apple_podcasts_url=apple_podcasts_url,
     )
 
     tracked_paths = ["data/episodes.sqlite3"]
@@ -236,12 +249,32 @@ def main() -> None:
         push=not args.no_push,
         pull_first=not args.no_pull,
         deploy_hook_url=args.deploy_hook_url,
+        discord_token=os.getenv("DISCORD_TOKEN", "").strip() or None,
+        announcement_channel_id=(
+            _optional_int_env("DISCORD_ANNOUNCEMENT_CHANNEL_ID")
+            or DEFAULT_ANNOUNCEMENT_CHANNEL_ID
+        ),
+        spotify_url=os.getenv("PODCAST_SPOTIFY_URL", DEFAULT_SPOTIFY_URL).strip() or DEFAULT_SPOTIFY_URL,
+        apple_podcasts_url=(
+            os.getenv("PODCAST_APPLE_PODCASTS_URL", DEFAULT_APPLE_PODCASTS_URL).strip()
+            or DEFAULT_APPLE_PODCASTS_URL
+        ),
     )
     print("Local refresh deploy complete.")
     print(f"Changed: {result.changed}")
     print(f"Committed: {result.committed}")
     print(f"Pushed: {result.pushed}")
     print(f"Deploy hook called: {result.deploy_hook_called}")
+
+
+def _optional_int_env(variable_name: str) -> int | None:
+    value = os.getenv(variable_name, "").strip()
+    if not value:
+        return None
+    try:
+        return int(value)
+    except ValueError as exc:
+        raise RuntimeError(f"{variable_name} must be a numeric Discord channel ID.") from exc
 
 
 if __name__ == "__main__":

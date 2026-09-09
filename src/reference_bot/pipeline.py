@@ -7,6 +7,12 @@ from pathlib import Path
 import re
 import sqlite3
 
+from reference_bot.announcements import (
+    DEFAULT_ANNOUNCEMENT_CHANNEL_ID,
+    DEFAULT_APPLE_PODCASTS_URL,
+    DEFAULT_SPOTIFY_URL,
+    publish_pending_episode_announcements,
+)
 from reference_bot.config import load_rss_settings
 from reference_bot.downloader import download_episode_audio
 from reference_bot.macwhisper import default_macwhisper_bin, transcribe_episode_audio
@@ -48,6 +54,8 @@ class PipelineResult:
     transcript_note_export_failed: int
     transcripts_indexed: int
     summaries_generated: int
+    announcements_sent: int
+    announcements_failed: int
 
 
 def run_pipeline(
@@ -73,6 +81,10 @@ def run_pipeline(
     skip_promotional: bool = False,
     formal_episodes_only: bool = False,
     delete_audio_after_transcription: bool = False,
+    discord_token: str | None = None,
+    announcement_channel_id: int | None = None,
+    spotify_url: str = DEFAULT_SPOTIFY_URL,
+    apple_podcasts_url: str = DEFAULT_APPLE_PODCASTS_URL,
 ) -> PipelineResult:
     rss_episodes_seen = sync_rss(feed_url=feed_url, database_path=database_path)
     audio_downloaded, audio_download_failed = _download_pending_audio(
@@ -121,6 +133,18 @@ def run_pipeline(
             limit=export_limit,
         )
 
+    announcements_sent = 0
+    announcements_failed = 0
+    if discord_token and announcement_channel_id is not None:
+        announcements_sent, announcements_failed = publish_pending_episode_announcements(
+            database_path=database_path,
+            discord_token=discord_token,
+            channel_id=announcement_channel_id,
+            spotify_url=spotify_url,
+            apple_podcasts_url=apple_podcasts_url,
+            limit=max(export_limit, 1),
+        )
+
     return PipelineResult(
         rss_episodes_seen=rss_episodes_seen,
         audio_downloaded=audio_downloaded,
@@ -132,6 +156,8 @@ def run_pipeline(
         transcript_note_export_failed=transcript_note_export_failed,
         transcripts_indexed=transcripts_indexed,
         summaries_generated=summaries_generated,
+        announcements_sent=announcements_sent,
+        announcements_failed=announcements_failed,
     )
 
 
@@ -202,6 +228,16 @@ def main() -> None:
         skip_promotional=args.skip_promotional,
         formal_episodes_only=args.formal_episodes_only,
         delete_audio_after_transcription=args.delete_audio_after_transcription,
+        discord_token=os.getenv("DISCORD_TOKEN", "").strip() or None,
+        announcement_channel_id=(
+            _optional_int_env("DISCORD_ANNOUNCEMENT_CHANNEL_ID")
+            or DEFAULT_ANNOUNCEMENT_CHANNEL_ID
+        ),
+        spotify_url=os.getenv("PODCAST_SPOTIFY_URL", DEFAULT_SPOTIFY_URL).strip() or DEFAULT_SPOTIFY_URL,
+        apple_podcasts_url=(
+            os.getenv("PODCAST_APPLE_PODCASTS_URL", DEFAULT_APPLE_PODCASTS_URL).strip()
+            or DEFAULT_APPLE_PODCASTS_URL
+        ),
     )
 
     print("Pipeline complete.")
@@ -215,6 +251,18 @@ def main() -> None:
     print(f"Transcript note export failed: {result.transcript_note_export_failed}")
     print(f"Transcripts indexed: {result.transcripts_indexed}")
     print(f"Summaries generated: {result.summaries_generated}")
+    print(f"Announcements sent: {result.announcements_sent}")
+    print(f"Announcements failed: {result.announcements_failed}")
+
+
+def _optional_int_env(variable_name: str) -> int | None:
+    value = os.getenv(variable_name, "").strip()
+    if not value:
+        return None
+    try:
+        return int(value)
+    except ValueError as exc:
+        raise RuntimeError(f"{variable_name} must be a numeric Discord channel ID.") from exc
 
 
 def _resolved_limit(specific_limit: int | None, default_limit: int) -> int:

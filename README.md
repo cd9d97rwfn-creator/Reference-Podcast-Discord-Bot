@@ -44,6 +44,14 @@ reference-run-pipeline --limit 1
 
 The pipeline runs RSS sync, downloads pending audio, transcribes downloaded audio with MacWhisper, exports Obsidian transcript notes, marks exported notes as indexed, and indexes transcript chunks for search. Use `--download-limit`, `--transcribe-limit`, and `--export-limit` to tune each stage independently.
 
+To announce a newly completed transcript in Discord after its episode summary is ready, set:
+
+- `DISCORD_ANNOUNCEMENT_CHANNEL_ID`: optional override for the numeric channel ID where 引引 should post. This checkout defaults to the verified `一般` channel in `蔡澤 的伺服器`.
+- `DISCORD_TOKEN`: the bot token used to send the announcement.
+- `PODCAST_SPOTIFY_URL` and `PODCAST_APPLE_PODCASTS_URL`: optional overrides for the official podcast links. The built-in defaults point to the official 引書店 show pages.
+
+Each newly transcribed episode is queued once, sent with the configured template, and marked as sent in SQLite so later refreshes do not announce it again. Failed sends remain retryable. Query answers sent in a server reply mention the member who asked the question.
+
 To use OpenAI direct transcription and OpenAI structured summaries:
 
 ```bash
@@ -64,6 +72,7 @@ The GitHub Actions workflow `.github/workflows/podcast-refresh.yml` runs this co
 
 - `PODCAST_RSS_URL`
 - `OPENAI_API_KEY`
+- `DISCORD_TOKEN` and `DISCORD_ANNOUNCEMENT_CHANNEL_ID` to enable new-episode announcements
 
 To let this Mac produce and deploy new corpus updates locally without manual pushes, see [Local Automation](docs/local-automation.md). The local job runs `reference-local-refresh-deploy`, commits `data/episodes.sqlite3`, pushes to GitHub, and lets the cloud service redeploy from that push.
 

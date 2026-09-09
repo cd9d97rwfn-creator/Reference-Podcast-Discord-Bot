@@ -38,6 +38,8 @@ jobs:
         env:
           PODCAST_RSS_URL: ${{ secrets.PODCAST_RSS_URL }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
+          DISCORD_ANNOUNCEMENT_CHANNEL_ID: ${{ secrets.DISCORD_ANNOUNCEMENT_CHANNEL_ID }}
           DATABASE_PATH: data/episodes.sqlite3
           REFERENCE_REFRESH_LIMIT: ${{ github.event.inputs.limit || '3' }}
         run: reference-refresh-corpus --limit "$REFERENCE_REFRESH_LIMIT"

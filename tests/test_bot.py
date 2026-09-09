@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 from pathlib import Path
+import asyncio
 import sys
+from types import SimpleNamespace
 import unittest
+from unittest.mock import AsyncMock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
@@ -19,6 +22,7 @@ from reference_bot.bot import (
     _format_topic_response,
     _readable_excerpt,
     _strip_bot_mention,
+    ReferenceBot,
 )
 from reference_bot.episodes import (
     BookMention,
@@ -32,6 +36,34 @@ from reference_bot.episodes import (
 
 
 class BotResponseTests(unittest.TestCase):
+    def test_topic_or_episode_answer_mentions_requesting_member(self) -> None:
+        class TypingContext:
+            async def __aenter__(self):
+                return None
+
+            async def __aexit__(self, exc_type, exc, traceback):
+                return False
+
+        bot_user = SimpleNamespace(id=999)
+        bot = SimpleNamespace(
+            user=bot_user,
+            settings=SimpleNamespace(database_path="episodes.sqlite3"),
+        )
+        message = SimpleNamespace(
+            author=SimpleNamespace(bot=False),
+            guild=object(),
+            mentions=[bot_user],
+            content="<@999> EP.407 在講什麼？",
+            channel=SimpleNamespace(typing=lambda: TypingContext()),
+            reply=AsyncMock(),
+        )
+        answer = SimpleNamespace(answer="EP.407 的摘要")
+
+        with patch("reference_bot.bot.asyncio.to_thread", new=AsyncMock(return_value=answer)):
+            asyncio.run(ReferenceBot.on_message(bot, message))
+
+        message.reply.assert_awaited_once_with("EP.407 的摘要", mention_author=True)
+
     def test_strip_bot_mention_accepts_both_discord_mention_forms(self) -> None:
         self.assertEqual(_strip_bot_mention("<@123> 有聊過倦怠嗎？", 123), "有聊過倦怠嗎？")
         self.assertEqual(_strip_bot_mention("嗨 <@!123>   EP.375 呢", 123), "嗨 EP.375 呢")

@@ -105,6 +105,44 @@ class LocalRefreshDeployTests(unittest.TestCase):
             )
             self.assertEqual(Path(kwargs["audio_dir"]), (repo_path / "data/audio").resolve())
 
+    def test_local_refresh_deploy_forwards_announcement_settings(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            repo_path = Path(temporary_directory)
+            (repo_path / ".git").mkdir()
+
+            def fake_run(command, cwd, check=True, text=False, stdout=None):
+                class Result:
+                    returncode = 0
+                    stdout = "main\n"
+
+                return Result()
+
+            with patch("reference_bot.local_refresh_deploy.refresh_corpus") as refresh, patch(
+                "reference_bot.local_refresh_deploy.subprocess.run",
+                side_effect=fake_run,
+            ):
+                local_refresh_deploy(
+                    repo_dir=str(repo_path),
+                    feed_url="https://example.com/rss",
+                    database_path="data/episodes.sqlite3",
+                    audio_dir="data/audio",
+                    transcripts_dir="data/transcripts",
+                    obsidian_transcripts_dir="Inbox/Podcast Import/transcripts",
+                    obsidian_episodes_dir="Inbox/Podcast Import/episodes",
+                    limit=1,
+                    openai_api_key="test-key",
+                    discord_token="discord-token",
+                    announcement_channel_id=123,
+                    spotify_url="https://example.com/spotify",
+                    apple_podcasts_url="https://example.com/apple",
+                )
+
+            kwargs = refresh.call_args.kwargs
+            self.assertEqual(kwargs["discord_token"], "discord-token")
+            self.assertEqual(kwargs["announcement_channel_id"], 123)
+            self.assertEqual(kwargs["spotify_url"], "https://example.com/spotify")
+            self.assertEqual(kwargs["apple_podcasts_url"], "https://example.com/apple")
+
 
 if __name__ == "__main__":
     unittest.main()
