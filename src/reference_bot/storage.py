@@ -889,7 +889,13 @@ def list_indexed_episodes_without_summary(
                     SELECT episode_guid
                     FROM episode_summaries
                 )
-            ORDER BY e.published_at DESC, e.first_seen_at DESC
+            ORDER BY
+                CASE
+                    WHEN e.announcement_status IN ('pending', 'failed') THEN 0
+                    ELSE 1
+                END,
+                datetime(e.transcribed_at) DESC,
+                e.first_seen_at DESC
             LIMIT ?
             """,
             (limit,),

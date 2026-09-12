@@ -16,6 +16,7 @@ from reference_bot.storage import (
     initialize_database,
     list_episodes,
     list_indexed_episodes,
+    list_indexed_episodes_without_summary,
     list_indexed_transcripts,
     list_pending_downloads,
     list_pending_transcript_exports,
@@ -41,6 +42,44 @@ from reference_bot.storage import (
 
 
 class StorageTests(unittest.TestCase):
+    def test_pending_announcement_is_prioritized_for_summary_generation(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            database_path = str(Path(temporary_directory) / "episodes.sqlite3")
+            pending_episode = Episode(
+                guid="episode-389",
+                title="EP.389《始於好奇，終於體驗》",
+                published_at="Fri, 04 Sep 2026 10:58:40 GMT",
+                episode_url=None,
+                audio_url=None,
+                description=None,
+            )
+            unrelated_episode = Episode(
+                guid="special-17",
+                title="【SP.17 聽眾導讀】",
+                published_at="Sat, 26 Nov 2022 02:52:11 GMT",
+                episode_url=None,
+                audio_url=None,
+                description=None,
+            )
+            upsert_episodes(database_path, [pending_episode, unrelated_episode])
+            mark_transcript_imported(database_path, pending_episode.guid, "ep389.txt")
+            mark_transcript_note_exported(database_path, pending_episode.guid, "ep389.md")
+            with sqlite3.connect(database_path) as connection:
+                connection.execute(
+                    """
+                    UPDATE episodes
+                    SET transcript_local_path = 'sp17.txt',
+                        transcribed_at = '2026-09-09 22:30:00',
+                        obsidian_transcript_status = 'indexed'
+                    WHERE guid = ?
+                    """,
+                    (unrelated_episode.guid,),
+                )
+
+            candidates = list_indexed_episodes_without_summary(database_path, limit=1)
+
+            self.assertEqual([item.episode.guid for item in candidates], [pending_episode.guid])
+
     def test_upsert_episodes_inserts_episode_metadata(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             database_path = str(Path(temporary_directory) / "episodes.sqlite3")

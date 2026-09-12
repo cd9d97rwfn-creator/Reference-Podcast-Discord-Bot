@@ -30,7 +30,10 @@ class _FakeResponse:
 
 class AnnouncementTests(unittest.TestCase):
     def test_format_episode_announcement_uses_template_and_limits_core_argument(self) -> None:
-        summary = _summary(key_point="這是一段超過五十個字的核心論述" * 5)
+        summary = _summary(
+            title="EP.407《工作的節奏》",
+            key_point="這是一段超過五十個字的核心論述" * 5,
+        )
 
         message = format_episode_announcement(summary)
 
@@ -40,6 +43,13 @@ class AnnouncementTests(unittest.TestCase):
         self.assertIn("這集的主題是建立可持續的工作節奏", message)
         core = message.split("引引最喜歡的地方是", 1)[1].split("，一起來聽聽看喵～", 1)[0]
         self.assertLessEqual(len(core), 50)
+
+    def test_format_episode_announcement_prefers_source_title_argument(self) -> None:
+        summary = _summary(key_point="標題主題：工作的節奏")
+
+        message = format_episode_announcement(summary)
+
+        self.assertIn("引引最喜歡的地方是慢慢做，才走得遠", message)
 
     def test_publish_marks_pending_announcement_sent_and_does_not_repeat(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -108,11 +118,15 @@ class AnnouncementTests(unittest.TestCase):
             urlopen.assert_not_called()
 
 
-def _summary(*, key_point: str = "穩定的小步前進，比短期燃燒更能累積真正的成果。") -> EpisodeSummary:
+def _summary(
+    *,
+    title: str = "EP.407《工作的節奏》＿『慢慢做，才走得遠。』",
+    key_point: str = "穩定的小步前進，比短期燃燒更能累積真正的成果。",
+) -> EpisodeSummary:
     return EpisodeSummary(
         episode=Episode(
             guid="episode-407",
-            title="EP.407《工作的節奏》",
+            title=title,
             published_at="Mon, 07 Sep 2026 00:00:00 +0800",
             episode_url="https://example.com/episode-407",
             audio_url="https://example.com/episode-407.mp3",

@@ -61,7 +61,8 @@ def format_episode_announcement(
     episode_label = _episode_label(summary.episode.title)
     topic = _clean_text(summary.topics[0] if summary.topics else summary.one_sentence_summary)
     core_argument = _clean_text(
-        summary.key_points[0] if summary.key_points else summary.one_sentence_summary,
+        _title_core_argument(summary.episode.title)
+        or (summary.key_points[0] if summary.key_points else summary.one_sentence_summary),
         limit=50,
     )
     return (
@@ -76,6 +77,13 @@ def _episode_label(title: str) -> str:
     if match:
         return f"EP.{match.group(1)}"
     return title.strip()
+
+
+def _title_core_argument(title: str) -> str | None:
+    match = re.search(r"『([^』]+)』", title)
+    if match:
+        return match.group(1).strip()
+    return None
 
 
 def _clean_text(value: str, *, limit: int | None = None) -> str:
