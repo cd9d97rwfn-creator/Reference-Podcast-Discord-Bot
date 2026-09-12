@@ -29,7 +29,7 @@ class _FakeResponse:
 
 
 class AnnouncementTests(unittest.TestCase):
-    def test_format_episode_announcement_uses_template_and_limits_core_argument(self) -> None:
+    def test_format_episode_announcement_uses_template_and_50_to_100_character_summary(self) -> None:
         summary = _summary(
             title="EP.407《工作的節奏》",
             key_point="這是一段超過五十個字的核心論述" * 5,
@@ -42,14 +42,53 @@ class AnnouncementTests(unittest.TestCase):
         self.assertIn("[Apple Podcast]", message)
         self.assertIn("這集的主題是建立可持續的工作節奏", message)
         core = message.split("引引最喜歡的地方是", 1)[1].split("，一起來聽聽看喵～", 1)[0]
-        self.assertLessEqual(len(core), 50)
+        self.assertGreaterEqual(len(core), 50)
+        self.assertLessEqual(len(core), 100)
 
     def test_format_episode_announcement_prefers_source_title_argument(self) -> None:
         summary = _summary(key_point="標題主題：工作的節奏")
 
         message = format_episode_announcement(summary)
 
-        self.assertIn("引引最喜歡的地方是慢慢做，才走得遠", message)
+        self.assertIn("慢慢做，才走得遠", message)
+
+    def test_publish_sends_only_latest_episode_and_supersedes_older_pending(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            database_path = str(Path(temporary_directory) / "episodes.sqlite3")
+            older = _summary(
+                guid="episode-406",
+                title="EP.406《舊的一集》＿『舊的內容。』",
+                published_at="Mon, 31 Aug 2026 00:00:00 +0800",
+            )
+            latest = _summary()
+            for summary in (older, latest):
+                upsert_episodes(database_path, [summary.episode])
+                mark_transcript_imported(database_path, summary.episode.guid, f"{summary.episode.guid}.txt")
+                upsert_episode_summary(database_path, summary)
+
+            with patch(
+                "reference_bot.announcements.request.urlopen",
+                return_value=_FakeResponse(),
+            ) as urlopen:
+                result = publish_pending_episode_announcements(
+                    database_path=database_path,
+                    discord_token="secret-token",
+                    channel_id=123,
+                )
+
+            self.assertEqual(result, (1, 0))
+            self.assertEqual(urlopen.call_count, 1)
+            payload = json.loads(urlopen.call_args.args[0].data.decode("utf-8"))
+            self.assertIn("EP.407", payload["content"])
+            self.assertNotIn("EP.406", payload["content"])
+            with sqlite3.connect(database_path) as connection:
+                statuses = dict(
+                    connection.execute(
+                        "SELECT guid, announcement_status FROM episodes"
+                    ).fetchall()
+                )
+            self.assertEqual(statuses["episode-407"], "sent")
+            self.assertEqual(statuses["episode-406"], "superseded")
 
     def test_publish_marks_pending_announcement_sent_and_does_not_repeat(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -120,14 +159,16 @@ class AnnouncementTests(unittest.TestCase):
 
 def _summary(
     *,
+    guid: str = "episode-407",
     title: str = "EP.407《工作的節奏》＿『慢慢做，才走得遠。』",
+    published_at: str = "Mon, 07 Sep 2026 00:00:00 +0800",
     key_point: str = "穩定的小步前進，比短期燃燒更能累積真正的成果。",
 ) -> EpisodeSummary:
     return EpisodeSummary(
         episode=Episode(
-            guid="episode-407",
+            guid=guid,
             title=title,
-            published_at="Mon, 07 Sep 2026 00:00:00 +0800",
+            published_at=published_at,
             episode_url="https://example.com/episode-407",
             audio_url="https://example.com/episode-407.mp3",
             description=None,

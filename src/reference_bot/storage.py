@@ -473,9 +473,9 @@ def mark_transcript_imported(database_path: str, guid: str, transcript_local_pat
 
 def list_pending_episode_announcements(
     database_path: str,
-    limit: int = 10,
+    limit: int | None = 10,
 ) -> list[EpisodeAnnouncement]:
-    if limit < 1:
+    if limit is not None and limit < 1:
         raise ValueError("limit must be greater than 0.")
 
     initialize_database(database_path)
@@ -498,13 +498,10 @@ def list_pending_episode_announcements(
             FROM episodes AS e
             JOIN episode_summaries AS s ON s.episode_guid = e.guid
             WHERE e.announcement_status IN ('pending', 'failed')
-            ORDER BY datetime(e.transcribed_at) ASC, e.guid ASC
-            LIMIT ?
-            """,
-            (limit,),
+            """
         ).fetchall()
 
-    return [
+    announcements = [
         EpisodeAnnouncement(
             summary=EpisodeSummary(
                 episode=Episode(
@@ -525,6 +522,8 @@ def list_pending_episode_announcements(
         )
         for row in rows
     ]
+    announcements.sort(key=lambda item: _episode_sort_key(item.summary.episode), reverse=True)
+    return announcements if limit is None else announcements[:limit]
 
 
 def mark_episode_announcement_sent(database_path: str, guid: str) -> None:
@@ -557,6 +556,28 @@ def mark_episode_announcement_failed(database_path: str, guid: str, error: str) 
             WHERE guid = ?
             """,
             (error, guid),
+        )
+
+
+def mark_episode_announcements_superseded(database_path: str, guids: Iterable[str]) -> None:
+    rows = [(guid,) for guid in guids]
+    if not rows:
+        return
+
+    initialize_database(database_path)
+    with sqlite3.connect(database_path) as connection:
+        connection.executemany(
+            """
+            UPDATE episodes
+            SET
+                announcement_status = 'superseded',
+                announcement_sent_at = NULL,
+                announcement_error = NULL,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE guid = ?
+                AND announcement_status IN ('pending', 'failed')
+            """,
+            rows,
         )
 
 

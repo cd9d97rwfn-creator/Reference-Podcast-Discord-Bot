@@ -46,7 +46,7 @@ The pipeline runs RSS sync, downloads pending audio, transcribes downloaded audi
 
 To announce a newly completed transcript in Discord after its episode summary is ready, set:
 
-- `DISCORD_ANNOUNCEMENT_CHANNEL_ID`: optional override for the numeric channel ID where 引引 should post. This checkout defaults to the verified `一般` channel in `蔡澤 的伺服器`.
+- `DISCORD_ANNOUNCEMENT_CHANNEL_ID`: optional override for the numeric channel ID where 引引 should post. This checkout defaults to the verified `💬｜文字聊天區` channel in the `引書店` server. The bot currently cannot post in `📣｜官方公告` unless that channel grants it Send Messages permission.
 - `DISCORD_TOKEN`: the bot token used to send the announcement.
 - `PODCAST_SPOTIFY_URL` and `PODCAST_APPLE_PODCASTS_URL`: optional overrides for the official podcast links. The built-in defaults point to the official 引書店 show pages.
 
