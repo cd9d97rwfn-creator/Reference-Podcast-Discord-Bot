@@ -133,7 +133,7 @@ class AskTests(unittest.TestCase):
             )
 
             self.assertFalse(result.used_llm)
-            self.assertIn("感謝您的詢問", result.answer)
+            self.assertIn("找到了！", result.answer)
             self.assertIn("EP.369", result.answer)
 
     def test_answer_question_falls_back_when_llm_fails(self) -> None:
@@ -168,7 +168,7 @@ class AskTests(unittest.TestCase):
                 )
 
             self.assertFalse(result.used_llm)
-            self.assertIn("感謝您的詢問", result.answer)
+            self.assertIn("找到了！", result.answer)
             self.assertIn("EP.369", result.answer)
 
     def test_answer_question_uses_transcript_evidence_when_summary_does_not_match(self) -> None:
@@ -280,23 +280,22 @@ class AskTests(unittest.TestCase):
             self.assertIn("概念地圖：財富 -> 財富階梯六級", result.answer)
             self.assertIn("關係：財富 expands_on 財富階梯六級", result.answer)
 
-    def test_answer_question_redirects_obvious_off_topic_questions(self) -> None:
+    def test_answer_question_refuses_off_topic_question_without_local_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             database_path = str(Path(temporary_directory) / "episodes.sqlite3")
 
-            result = answer_question(
-                database_path=database_path,
-                question="今天台北天氣怎麼樣？",
-                api_key=None,
-            )
+            with patch("reference_bot.ask.synthesize_answer") as synthesize:
+                result = answer_question(
+                    database_path=database_path,
+                    question="今天台北天氣怎麼樣？",
+                    api_key="test-key",
+                )
 
             self.assertFalse(result.used_llm)
-            self.assertIn("需要即時外部資料", result.answer)
-            self.assertIn("引書店 Podcast", result.answer)
-            self.assertIn("EP.375", result.answer)
-            self.assertNotIn("summary index 或逐字稿 chunks", result.answer)
+            self.assertEqual(result.answer, "引引也不知道喵～")
+            synthesize.assert_not_called()
 
-    def test_answer_question_keeps_keyword_hint_for_unmatched_podcast_queries(self) -> None:
+    def test_answer_question_uses_fixed_reply_for_unmatched_podcast_queries(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             database_path = str(Path(temporary_directory) / "episodes.sqlite3")
 
@@ -307,12 +306,9 @@ class AskTests(unittest.TestCase):
             )
 
             self.assertFalse(result.used_llm)
-            self.assertIn("引書店", result.answer)
-            self.assertIn("關鍵字", result.answer)
-            self.assertIn("問我", result.answer)
-            self.assertNotIn("不像在查節目", result.answer)
+            self.assertEqual(result.answer, "引引也不知道喵～")
 
-    def test_answer_question_offers_related_concepts_when_direct_query_misses(self) -> None:
+    def test_answer_question_does_not_expand_a_no_match_into_weak_related_terms(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             database_path = str(Path(temporary_directory) / "episodes.sqlite3")
             episode = Episode(
@@ -346,20 +342,11 @@ class AskTests(unittest.TestCase):
 
             self.assertFalse(result.used_llm)
             synthesize.assert_not_called()
-            self.assertIn("沒有找到這個問法的直接命中", result.answer)
-            self.assertIn("相近概念", result.answer)
-            self.assertIn("手機成癮", result.answer)
-            self.assertIn("不代表節目直接討論你原本問的詞", result.answer)
+            self.assertEqual(result.answer, "引引也不知道喵～")
+            self.assertEqual(result.concept_mentions, [])
 
-    def test_no_match_responses_offer_four_cat_clerk_personalities(self) -> None:
-        self.assertEqual(len(PODCAST_NO_MATCH_RESPONSES), 4)
-        for response in PODCAST_NO_MATCH_RESPONSES:
-            with self.subTest(response=response):
-                self.assertTrue(any(term in response for term in ("喵", "貓咪店員", "爪子")))
-                self.assertIn("引書店", response)
-                self.assertTrue(any(term in response for term in ("關鍵字", "書名", "概念", "問我")))
-                self.assertNotIn("/ask", response)
-                self.assertNotIn("summary index", response)
+    def test_no_match_response_is_short_and_fixed(self) -> None:
+        self.assertEqual(PODCAST_NO_MATCH_RESPONSES, ("引引也不知道喵～",))
 
 
 if __name__ == "__main__":

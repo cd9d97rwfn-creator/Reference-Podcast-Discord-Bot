@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import random
 import re
 
 from reference_bot.answer_synthesis import DEFAULT_ASK_MODEL, synthesize_answer
@@ -13,7 +12,6 @@ from reference_bot.episodes import (
     EpisodeSummary,
     TranscriptSearchResult,
 )
-from reference_bot.normalization import looks_like_cjk, query_terms
 from reference_bot.storage import (
     get_episode_summary_by_number,
     search_book_mentions,
@@ -25,25 +23,7 @@ from reference_bot.storage import (
 )
 
 
-PODCAST_NO_MATCH_RESPONSES = (
-    (
-        "喵，我剛剛幫你翻了一下引書店的摘要書架和逐字稿抽屜，"
-        "目前還沒有找到很明確相關的內容。\n\n"
-        "你可以丟給我更接近節目用語的關鍵字，或換個問法再問我一次。"
-    ),
-    (
-        "引書店的貓咪店員認真巡了一圈索引櫃，這題目前沒有明確命中的集數或逐字稿片段。\n\n"
-        "如果你記得主持人可能用過的詞，換一個關鍵字再問我，我會再幫你找一次。"
-    ),
-    (
-        "喵嗚，這一題我暫時沒有叼到引書店的可靠線索。摘要和逐字稿裡都沒有很像的內容。\n\n"
-        "你可以把問題問得更靠近書名、作者、概念詞，再叫貓咪店員幫你翻一輪。"
-    ),
-    (
-        "我先把爪子收好，保守回答：目前引書店索引裡沒有找到足夠明確的證據。\n\n"
-        "可以試著換成更具體的關鍵字，例如書名、人物、概念或某一集的線索，再問我。"
-    ),
-)
+PODCAST_NO_MATCH_RESPONSES = ("引引也不知道喵～",)
 
 
 @dataclass(frozen=True)
@@ -97,28 +77,7 @@ def answer_question(
         limit=8,
     )
     transcript_results = _first_result_per_episode(transcript_results)
-    used_related_fallback = False
-
-    if not (book_mentions or concept_mentions or concept_clusters or concept_relationships or summaries or transcript_results):
-        related_query = _related_concept_query(question)
-        if related_query:
-            book_mentions = search_book_mentions(database_path, query=related_query, limit=5)
-            concept_mentions = search_concept_mentions(database_path, query=related_query, limit=8)
-            concept_clusters = search_concept_clusters(database_path, query=related_query, limit=8)
-            concept_relationships = search_concept_relationships(database_path, query=related_query, limit=8)
-            summaries = search_episode_summaries(database_path, query=related_query, limit=5)
-            transcript_results = search_transcript_chunks(database_path, query=related_query, limit=8)
-            transcript_results = _first_result_per_episode(transcript_results)
-            used_related_fallback = bool(
-                book_mentions
-                or concept_mentions
-                or concept_clusters
-                or concept_relationships
-                or summaries
-                or transcript_results
-            )
-
-    if api_key and not used_related_fallback and (book_mentions or concept_mentions or summaries or transcript_results):
+    if api_key and (book_mentions or concept_mentions or summaries or transcript_results):
         try:
             answer = synthesize_answer(
                 api_key=api_key,
@@ -153,8 +112,7 @@ def answer_question(
         concept_mentions=concept_mentions,
         concept_clusters=concept_clusters,
         concept_relationships=concept_relationships,
-        transcript_query=_related_concept_query(question) if used_related_fallback else _fallback_transcript_query(question),
-        used_related_fallback=used_related_fallback,
+        transcript_query=_fallback_transcript_query(question),
     )
 
     return AskResult(
@@ -179,23 +137,20 @@ def _format_structured_fallback_answer(
     concept_clusters: list[ConceptCluster],
     concept_relationships: list[ConceptRelationship],
     transcript_query: str,
-    used_related_fallback: bool = False,
 ) -> str:
     has_index_hits = bool(book_mentions or concept_mentions or concept_clusters or concept_relationships)
     if not summaries and not transcript_results and not has_index_hits:
         return _format_no_match_answer(question)
 
     lines = [f"你問：{question}", "", "簡短回答："]
-    if used_related_fallback:
-        lines.append("目前沒有找到這個問法的直接命中；但我改用問題中的核心詞找相近概念，先列出可能相關的集數。")
-    elif summaries:
-        lines.append("感謝您的詢問，有找到摘要索引中可能相關的集數；下面依集數、橫向概念與證據整理。")
+    if summaries:
+        lines.append("找到了！摘要索引中有可能相關的集數；下面依集數、橫向概念與證據整理。")
     elif transcript_results and has_index_hits:
-        lines.append("有找到索引與逐字稿片段，但目前缺少直接命中的摘要；先把可查到的線索保守列出。")
+        lines.append("找到了！索引與逐字稿都有相關片段，但目前缺少直接相關的摘要；先把可查到的線索保守列出。")
     elif transcript_results:
-        lines.append("摘要索引還沒有直接命中，不過逐字稿也找到一些線索；這只代表片段相關。")
+        lines.append("找到了！逐字稿裡有一些線索；這只代表片段相關，不一定是整集主題。")
     else:
-        lines.append("概念/書籍索引先找到這些可能相關項目，但還需要摘要或逐字稿片段作為更強證據。")
+        lines.append("找到了！概念／書籍索引裡有這些相關項目，但還需要摘要或逐字稿片段作為更強證據。")
 
     episodes = _rank_related_episodes(
         summaries=summaries,
@@ -244,149 +199,20 @@ def _format_structured_fallback_answer(
         [
             "",
             (
-                "注意：這些是相近概念線索，不代表節目直接討論你原本問的詞；需要用集數內容再確認。"
-                if used_related_fallback
-                else "注意：這代表目前索引找到相關討論，不等於該集完整摘要了某本書；逐字稿命中也可能只是片段提及。"
+                "注意：這代表目前索引找到相關討論，不等於該集完整摘要了某本書；逐字稿也可能只是片段提及。"
             ),
         ]
     )
     return _truncate_discord_message("\n".join(lines))
 
 
-def _related_concept_query(question: str) -> str:
-    terms = query_terms(question)
-    related_terms: list[str] = []
-    for term in terms:
-        if len(term) >= 2:
-            related_terms.append(term)
-        if looks_like_cjk(term):
-            related_terms.extend(_cjk_ngrams(term, size=3))
-            related_terms.extend(_cjk_ngrams(term, size=2))
-    related_terms = [
-        term
-        for term in _dedupe(related_terms)
-        if len(term) >= 2 and term not in terms and not _is_too_generic_related_term(term)
-    ]
-    return " ".join(related_terms[:6])
-
-
-def _cjk_ngrams(value: str, *, size: int) -> list[str]:
-    cjk_characters = [character for character in value if "\u4e00" <= character <= "\u9fff"]
-    if len(cjk_characters) < size:
-        return []
-    return ["".join(cjk_characters[index : index + size]) for index in range(len(cjk_characters) - size + 1)]
-
-
-def _is_too_generic_related_term(term: str) -> bool:
-    return term in {"有沒有", "哪一", "哪幾", "相關", "概念", "主題", "內容", "集數", "討論", "提到"}
-
-
 def _format_no_match_answer(question: str) -> str:
-    if _looks_off_topic(question):
-        return _format_off_topic_answer(question)
-
     return format_podcast_no_match_answer(question)
 
 
 def format_podcast_no_match_answer(question: str) -> str:
-    return (
-        f"你問：{question}\n\n"
-        f"{random.choice(PODCAST_NO_MATCH_RESPONSES)}"
-    )
-
-
-def _format_off_topic_answer(question: str) -> str:
-    response = _off_topic_response(question)
-    return (
-        f"你問：{question}\n\n"
-        f"{response}\n\n"
-        "我主要負責查「引書店 Podcast」的集數、書籍、概念與逐字稿證據。"
-        "你可以改問：`有沒有聊過職業倦怠？`、`哪幾集提到納瓦爾？`、`EP.375 在講什麼？`"
-    )
-
-
-def _off_topic_response(question: str) -> str:
-    normalized_question = question.lower()
-    if any(term in normalized_question for term in ("你是誰", "你會什麼", "help", "使用說明")):
-        return "我是引書店資料查詢 bot，不是通用聊天 bot；我會盡量把問題拉回節目資料。"
-    if any(term in question for term in ("天氣", "幾點", "現在時間", "匯率", "股價", "新聞", "路況")):
-        return "這題需要即時外部資料，我這裡沒有連外查詢能力，所以先不亂答。"
-    if any(term in question for term in ("股票", "投資建議", "醫生", "診斷", "法律", "律師", "報稅")):
-        return "這題可能牽涉專業判斷，我只能查節目中是否提過相關內容，不能當成建議。"
-    if any(term in question for term in ("講笑話", "唱歌", "寫程式", "作業", "算命", "星座")):
-        return "這題有點超出節目查詢範圍，我先把自己收斂一點。"
-    return "這題看起來不像在查節目、書籍或概念，我先不硬答。"
-
-
-def _looks_off_topic(question: str) -> bool:
-    if not question.strip():
-        return True
-
-    if _has_podcast_query_intent(question):
-        return False
-
-    off_topic_terms = {
-        "你是誰",
-        "你會什麼",
-        "help",
-        "使用說明",
-        "天氣",
-        "幾點",
-        "現在時間",
-        "匯率",
-        "股價",
-        "新聞",
-        "路況",
-        "股票",
-        "投資建議",
-        "醫生",
-        "診斷",
-        "法律",
-        "律師",
-        "報稅",
-        "講笑話",
-        "唱歌",
-        "寫程式",
-        "作業",
-        "算命",
-        "星座",
-    }
-    normalized_question = question.lower()
-    return any(term in normalized_question for term in off_topic_terms)
-
-
-def _has_podcast_query_intent(question: str) -> bool:
-    intent_patterns = [
-        r"\bep\.?\s*\d{1,4}\b",
-        r"第\s*\d{1,4}\s*集",
-        r"\b\d{1,4}\s*集",
-    ]
-    if any(re.search(pattern, question, flags=re.IGNORECASE) for pattern in intent_patterns):
-        return True
-
-    intent_terms = {
-        "引書店",
-        "節目",
-        "集數",
-        "哪一集",
-        "哪幾集",
-        "哪集",
-        "有沒有聊過",
-        "有沒有討論",
-        "有沒有提到",
-        "聊過",
-        "討論過",
-        "提到",
-        "提過",
-        "講過",
-        "書",
-        "書籍",
-        "概念",
-        "主題",
-        "逐字稿",
-        "摘要",
-    }
-    return any(term in question for term in intent_terms)
+    del question
+    return PODCAST_NO_MATCH_RESPONSES[0]
 
 
 def _format_mentions_only_answer(
@@ -400,7 +226,7 @@ def _format_mentions_only_answer(
     lines = [
         f"你問：{question}",
         "",
-        "目前概念/書籍索引先找到這些可能相關項目，但 summary 或逐字稿還沒有直接命中同一個問法：",
+        "目前概念／書籍索引先找到這些可能相關項目，但摘要或逐字稿還沒有直接找到同一個問法：",
     ]
     _append_concept_map_lines(lines, concept_clusters, concept_relationships)
     for mention in concept_mentions[:5]:

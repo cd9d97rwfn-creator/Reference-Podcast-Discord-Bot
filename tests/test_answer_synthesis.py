@@ -27,6 +27,9 @@ class AnswerSynthesisTests(unittest.TestCase):
         self.assertIn("引書店", prompt)
         self.assertIn("不要每句都加「喵」", prompt)
         self.assertIn("精準與可信度永遠優先", prompt)
+        self.assertIn("找到了！", prompt)
+        self.assertIn("引引也不知道喵～", prompt)
+        self.assertIn("不要用常識補充", prompt)
 
     def test_synthesize_answer_passes_retrieved_context_to_openai(self) -> None:
         episode = Episode(

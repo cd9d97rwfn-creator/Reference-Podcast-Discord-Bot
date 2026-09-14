@@ -122,11 +122,11 @@ def _format_episodes_response(indexed_episodes: list[Episode]) -> str:
 
 def _format_mentioned_response(query: str, results: list[TranscriptSearchResult]) -> str:
     if not results:
-        return f"沒有找到逐字稿關鍵字命中：{query}"
+        return "引引也不知道喵～"
 
     deduped_results = _first_result_per_episode(results)
     lines = [
-        f"逐字稿關鍵字命中：{query}",
+        f"找到了！逐字稿裡有「{query}」：",
         "注意：這不是摘要或主題判斷，只代表逐字稿片段出現這個詞。",
         "目前 MacWhisper CLI 逐字稿不含時間戳。",
     ]
@@ -138,10 +138,10 @@ def _format_mentioned_response(query: str, results: list[TranscriptSearchResult]
 
 def _format_book_response(query: str, results: list[BookMention]) -> str:
     if not results:
-        return f"沒有找到書籍索引命中：{query}"
+        return "引引也不知道喵～"
 
     lines = [
-        f"書籍索引命中：{query}",
+        f"找到了！書籍索引裡有「{query}」：",
         "注意：mention level 代表節目中的討論程度，不等於完整書摘。",
     ]
     for index, mention in enumerate(results, start=1):
@@ -162,10 +162,10 @@ def _format_topic_response(
     clusters = clusters or []
     relationships = relationships or []
     if not results and not clusters and not relationships:
-        return f"沒有找到主題/概念索引命中：{query}"
+        return "引引也不知道喵～"
 
     lines = [
-        f"主題/概念索引命中：{query}",
+        f"找到了！主題／概念索引裡有「{query}」：",
         "注意：這是 summary index 的保守索引；需要時可換關鍵字再問我查逐字稿證據。",
     ]
     if clusters:
@@ -185,7 +185,7 @@ def _format_topic_response(
     if not results:
         return _truncate_discord_message("\n".join(lines))
 
-    lines.extend(["", "索引命中："])
+    lines.extend(["", "索引找到："])
     for index, mention in enumerate(results, start=1):
         lines.append(f"{index}. {mention.name}")
         lines.append(f"   集數：{mention.episode.title}")
@@ -201,10 +201,7 @@ def _format_episode_summary_answer(
     summary: EpisodeSummary | None,
 ) -> str:
     if summary is None:
-        return (
-            f"我有看懂你在問 EP.{episode_number}，但目前還沒有這集的 summary index。"
-            "可以先跑 `reference-generate-summaries` 產生摘要。"
-        )
+        return "引引也不知道喵～"
 
     lines = [
         f"你問：{question}",
@@ -249,7 +246,7 @@ def _format_natural_language_answer(
             lines.append(f"{index}. {result.episode.title}")
             lines.append("   片段：")
             lines.append(_indent_block(_readable_excerpt(result.chunk_text, _fallback_transcript_query(question))))
-        lines.append("注意：逐字稿線索只代表片段命中，不一定代表該集主題。")
+        lines.append("注意：逐字稿線索只代表片段提到，不一定代表該集主題。")
 
     return _truncate_discord_message("\n".join(lines))
 

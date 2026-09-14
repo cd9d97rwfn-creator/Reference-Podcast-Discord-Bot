@@ -116,14 +116,14 @@ class BotResponseTests(unittest.TestCase):
             ],
         )
 
-        self.assertIn("逐字稿關鍵字命中：品質", response)
+        self.assertIn("找到了！逐字稿裡有「品質」", response)
         self.assertIn("這不是摘要或主題判斷", response)
         self.assertIn("不含時間戳", response)
         self.assertIn("品質管理這一集", response)
         self.assertIn("證據片段", response)
 
     def test_format_mentioned_response_handles_no_matches(self) -> None:
-        self.assertIn("沒有找到逐字稿關鍵字命中", _format_mentioned_response("不存在", []))
+        self.assertEqual("引引也不知道喵～", _format_mentioned_response("不存在", []))
 
     def test_format_book_response_lists_mention_level_and_evidence(self) -> None:
         response = _format_book_response(
@@ -145,14 +145,14 @@ class BotResponseTests(unittest.TestCase):
             ],
         )
 
-        self.assertIn("書籍索引命中：納瓦爾", response)
+        self.assertIn("找到了！書籍索引裡有「納瓦爾」", response)
         self.assertIn("《納瓦爾寶典》", response)
         self.assertIn("EP.329", response)
         self.assertIn("main_focus", response)
         self.assertIn("不等於完整書摘", response)
 
     def test_format_book_response_handles_no_matches(self) -> None:
-        self.assertIn("沒有找到書籍索引命中", _format_book_response("不存在", []))
+        self.assertEqual("引引也不知道喵～", _format_book_response("不存在", []))
 
     def test_format_topic_response_lists_mention_level_and_evidence(self) -> None:
         episode = Episode(
@@ -193,7 +193,7 @@ class BotResponseTests(unittest.TestCase):
             ],
         )
 
-        self.assertIn("主題/概念索引命中：職業倦怠", response)
+        self.assertIn("找到了！主題／概念索引裡有「職業倦怠」", response)
         self.assertIn("概念地圖", response)
         self.assertIn("職業倦怠 -> 理想性工作", response)
         self.assertIn("expands_on", response)
@@ -203,7 +203,7 @@ class BotResponseTests(unittest.TestCase):
         self.assertIn("再問我", response)
 
     def test_format_topic_response_handles_no_matches(self) -> None:
-        self.assertIn("沒有找到主題/概念索引命中", _format_topic_response("不存在", []))
+        self.assertEqual("引引也不知道喵～", _format_topic_response("不存在", []))
 
     def test_format_mentioned_response_shows_each_episode_once(self) -> None:
         episode = Episode(
@@ -271,6 +271,12 @@ class BotResponseTests(unittest.TestCase):
         self.assertIn("三種真實", response)
         self.assertIn("重點", response)
         self.assertIn("保守摘要", response)
+
+    def test_format_episode_summary_answer_refuses_unknown_episode(self) -> None:
+        self.assertEqual(
+            _format_episode_summary_answer("EP.999 在講什麼？", 999, None),
+            "引引也不知道喵～",
+        )
 
     def test_format_natural_language_answer_uses_summary_results(self) -> None:
         response = _format_natural_language_answer(
