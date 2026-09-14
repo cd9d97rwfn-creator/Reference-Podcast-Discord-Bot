@@ -50,19 +50,64 @@ class BotResponseTests(unittest.TestCase):
             settings=SimpleNamespace(database_path="episodes.sqlite3"),
         )
         message = SimpleNamespace(
-            author=SimpleNamespace(bot=False),
+            id=100,
+            author=SimpleNamespace(bot=False, id=1, display_name="提問者"),
             guild=object(),
             mentions=[bot_user],
             content="<@999> EP.407 在講什麼？",
-            channel=SimpleNamespace(typing=lambda: TypingContext()),
+            channel=SimpleNamespace(id=200, typing=lambda: TypingContext()),
+            created_at=SimpleNamespace(isoformat=lambda: "2026-09-14T10:00:00+08:00"),
             reply=AsyncMock(),
         )
-        answer = SimpleNamespace(answer="EP.407 的摘要")
 
-        with patch("reference_bot.bot.asyncio.to_thread", new=AsyncMock(return_value=answer)):
+        with patch(
+            "reference_bot.bot.asyncio.to_thread",
+            new=AsyncMock(return_value=("EP.407 的摘要", None)),
+        ):
             asyncio.run(ReferenceBot.on_message(bot, message))
 
-        message.reply.assert_awaited_once_with("EP.407 的摘要", mention_author=True)
+        message.reply.assert_awaited_once()
+        args, kwargs = message.reply.await_args
+        self.assertEqual(args[0], "EP.407 的摘要")
+        self.assertTrue(kwargs["mention_author"])
+        self.assertTrue(kwargs["allowed_mentions"].users)
+        self.assertFalse(kwargs["allowed_mentions"].everyone)
+
+    def test_related_answer_mentions_most_recent_previous_member(self) -> None:
+        class TypingContext:
+            async def __aenter__(self):
+                return None
+
+            async def __aexit__(self, exc_type, exc, traceback):
+                return False
+
+        bot_user = SimpleNamespace(id=999)
+        previous_member = SimpleNamespace(id=7)
+        guild = SimpleNamespace(id=1316432649593557033, get_member=lambda user_id: previous_member)
+        bot = SimpleNamespace(
+            user=bot_user,
+            settings=SimpleNamespace(database_path="episodes.sqlite3"),
+        )
+        message = SimpleNamespace(
+            id=101,
+            author=SimpleNamespace(bot=False, id=2, display_name="新提問者"),
+            guild=guild,
+            mentions=[bot_user],
+            content="<@999> EP.375 在講什麼？",
+            channel=SimpleNamespace(id=200, typing=lambda: TypingContext()),
+            created_at=SimpleNamespace(isoformat=lambda: "2026-09-14T11:00:00+08:00"),
+            reply=AsyncMock(),
+        )
+
+        with patch(
+            "reference_bot.bot.asyncio.to_thread",
+            new=AsyncMock(return_value=("找到了！EP.375", 7)),
+        ):
+            asyncio.run(ReferenceBot.on_message(bot, message))
+
+        content = message.reply.await_args.args[0]
+        self.assertIn("<@7>", content)
+        self.assertIn("之前也問過同一集或相關關鍵字", content)
 
     def test_strip_bot_mention_accepts_both_discord_mention_forms(self) -> None:
         self.assertEqual(_strip_bot_mention("<@123> 有聊過倦怠嗎？", 123), "有聊過倦怠嗎？")

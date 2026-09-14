@@ -40,6 +40,7 @@ class StartDiagnosticsTests(unittest.TestCase):
         self.assertEqual(diagnostics["render_git_commit"], "abcdef123456")
         self.assertEqual(diagnostics["counts"]["episodes"], 1)
         self.assertEqual(diagnostics["counts"]["transcript_chunks"], 2)
+        self.assertEqual(diagnostics["counts"]["question_history"], 1)
         self.assertNotIn("secret-token", str(diagnostics))
         self.assertNotIn("secret-key", str(diagnostics))
         self.assertNotIn("111", str(diagnostics))
@@ -80,6 +81,7 @@ class StartDiagnosticsTests(unittest.TestCase):
             connection.execute("CREATE TABLE concept_mentions (episode_guid TEXT, name TEXT)")
             connection.execute("CREATE TABLE concept_clusters (episode_guid TEXT, cluster_name TEXT)")
             connection.execute("CREATE TABLE concept_relationships (episode_guid TEXT, source_name TEXT)")
+            connection.execute("CREATE TABLE question_history (message_id TEXT PRIMARY KEY)")
             connection.execute("INSERT INTO episodes VALUES ('episode-1')")
             connection.execute("INSERT INTO episode_summaries VALUES ('episode-1')")
             connection.executemany(
@@ -90,6 +92,7 @@ class StartDiagnosticsTests(unittest.TestCase):
             connection.execute("INSERT INTO concept_mentions VALUES ('episode-1', 'concept')")
             connection.execute("INSERT INTO concept_clusters VALUES ('episode-1', 'cluster')")
             connection.execute("INSERT INTO concept_relationships VALUES ('episode-1', 'source')")
+            connection.execute("INSERT INTO question_history VALUES ('message-1')")
 
 
 if __name__ == "__main__":

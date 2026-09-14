@@ -52,6 +52,8 @@ To announce a newly completed transcript in Discord after its episode summary is
 
 Each newly transcribed episode is queued once, sent with the configured template, and marked as sent in SQLite so later refreshes do not announce it again. Failed sends remain retryable. Query answers sent in a server reply mention the member who asked the question.
 
+Question-history matching defaults to the `引書店` server and can be overridden with `QUESTION_HISTORY_GUILD_ID`. On startup, the bot incrementally scans only messages that directly mention the bot in text channels where it has View Channel and Read Message History permissions. It stores the asker ID, question, locally retrieved episode IDs, and normalized keywords in SQLite. A later locally supported answer may mention only the most recent different member who asked about the same episode or keyword; ordinary server chat and direct messages are not stored.
+
 To use OpenAI direct transcription and OpenAI structured summaries:
 
 ```bash

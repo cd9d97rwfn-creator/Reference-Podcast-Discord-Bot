@@ -9,7 +9,7 @@ import re
 import discord
 
 from reference_bot.answer_synthesis import DEFAULT_ASK_MODEL
-from reference_bot.ask import answer_question, format_podcast_no_match_answer
+from reference_bot.ask import AskResult, answer_question, format_podcast_no_match_answer
 from reference_bot.config import Settings, load_settings
 from reference_bot.episodes import (
     BookMention,
@@ -20,10 +20,19 @@ from reference_bot.episodes import (
     EpisodeSummary,
     TranscriptSearchResult,
 )
+from reference_bot.normalization import query_terms
+from reference_bot.storage import (
+    find_previous_related_question_user,
+    get_question_history_cursor,
+    initialize_database,
+    record_question_history,
+    set_question_history_cursor,
+)
 
 
 LOGGER = logging.getLogger(__name__)
 BOT_DISPLAY_NAME = "引引"
+DEFAULT_QUESTION_HISTORY_GUILD_ID = 1316432649593557033
 
 
 PING_RESPONSES = (
@@ -40,7 +49,9 @@ class ReferenceBot(discord.Client):
         intents.message_content = True
         super().__init__(intents=intents)
         self.settings = settings
+        initialize_database(self.settings.database_path)
         self.tree = discord.app_commands.CommandTree(self)
+        self._history_backfill_task: asyncio.Task[None] | None = None
 
     async def setup_hook(self) -> None:
         if self.settings.discord_guild_ids:
@@ -70,6 +81,9 @@ class ReferenceBot(discord.Client):
             except discord.HTTPException as exc:
                 LOGGER.warning("Could not set bot nickname in guild %s: %s", guild.id, exc)
 
+        if self._history_backfill_task is None or self._history_backfill_task.done():
+            self._history_backfill_task = asyncio.create_task(self._backfill_question_history())
+
     async def on_message(self, message: discord.Message) -> None:
         if message.author.bot or self.user is None:
             return
@@ -89,14 +103,212 @@ class ReferenceBot(discord.Client):
             return
 
         async with message.channel.typing():
-            result = await asyncio.to_thread(
-                answer_question,
+            answer, previous_user_id = await asyncio.to_thread(
+                _answer_and_record_question,
                 database_path=self.settings.database_path,
                 question=question,
                 api_key=os.getenv("OPENAI_API_KEY", "").strip() or None,
                 model=os.getenv("OPENAI_ASK_MODEL", DEFAULT_ASK_MODEL).strip() or DEFAULT_ASK_MODEL,
+                message_id=message.id,
+                guild_id=getattr(message.guild, "id", None),
+                channel_id=message.channel.id,
+                user_id=message.author.id,
+                user_display_name=message.author.display_name,
+                asked_at=message.created_at.isoformat(),
+                history_guild_id=_question_history_guild_id(),
             )
-        await message.reply(_truncate_discord_message(result.answer), mention_author=True)
+        if previous_user_id is not None and message.guild is not None:
+            previous_member = message.guild.get_member(previous_user_id)
+            if previous_member is not None:
+                answer += (
+                    f"\n\n<@{previous_user_id}> 之前也問過同一集或相關關鍵字，"
+                    "邀請你回來看看喵～"
+                )
+        await message.reply(
+            _truncate_discord_message(answer),
+            mention_author=True,
+            allowed_mentions=discord.AllowedMentions(
+                everyone=False,
+                roles=False,
+                users=True,
+                replied_user=True,
+            ),
+        )
+
+    async def _backfill_question_history(self) -> None:
+        if self.user is None:
+            return
+        guild_id = _question_history_guild_id()
+        guild = self.get_guild(guild_id)
+        if guild is None or guild.me is None:
+            LOGGER.warning("Question-history guild %s is unavailable to the bot", guild_id)
+            return
+
+        recorded = 0
+        for channel in guild.text_channels:
+            permissions = channel.permissions_for(guild.me)
+            if not permissions.view_channel or not permissions.read_message_history:
+                continue
+            cursor = await asyncio.to_thread(
+                get_question_history_cursor,
+                self.settings.database_path,
+                channel.id,
+            )
+            latest_message_id = cursor
+            after = discord.Object(id=cursor) if cursor is not None else None
+            try:
+                async for historical_message in channel.history(
+                    limit=None,
+                    after=after,
+                    oldest_first=True,
+                ):
+                    latest_message_id = max(latest_message_id or 0, historical_message.id)
+                    if historical_message.author.bot or self.user not in historical_message.mentions:
+                        continue
+                    question = _strip_bot_mention(historical_message.content, self.user.id)
+                    if not question or question.casefold() in {"ping", "在嗎", "在嗎？"}:
+                        continue
+                    await asyncio.to_thread(
+                        _record_historical_question,
+                        database_path=self.settings.database_path,
+                        question=question,
+                        message_id=historical_message.id,
+                        guild_id=guild.id,
+                        channel_id=channel.id,
+                        user_id=historical_message.author.id,
+                        user_display_name=historical_message.author.display_name,
+                        asked_at=historical_message.created_at.isoformat(),
+                    )
+                    recorded += 1
+            except (discord.Forbidden, discord.HTTPException) as exc:
+                LOGGER.warning("Could not backfill question history in channel %s: %s", channel.id, exc)
+                continue
+
+            if latest_message_id is not None:
+                await asyncio.to_thread(
+                    set_question_history_cursor,
+                    self.settings.database_path,
+                    guild_id=guild.id,
+                    channel_id=channel.id,
+                    last_message_id=latest_message_id,
+                )
+        LOGGER.info("Question-history backfill complete for guild %s: %s mentions recorded", guild.id, recorded)
+
+
+def _question_history_guild_id() -> int:
+    raw_value = os.getenv("QUESTION_HISTORY_GUILD_ID", str(DEFAULT_QUESTION_HISTORY_GUILD_ID)).strip()
+    try:
+        return int(raw_value)
+    except ValueError:
+        LOGGER.warning(
+            "QUESTION_HISTORY_GUILD_ID is not numeric; using the 引書店 guild %s",
+            DEFAULT_QUESTION_HISTORY_GUILD_ID,
+        )
+        return DEFAULT_QUESTION_HISTORY_GUILD_ID
+
+
+def _answer_and_record_question(
+    *,
+    database_path: str,
+    question: str,
+    api_key: str | None,
+    model: str,
+    message_id: int,
+    guild_id: int | None,
+    channel_id: int,
+    user_id: int,
+    user_display_name: str,
+    asked_at: str,
+    history_guild_id: int,
+) -> tuple[str, int | None]:
+    result = answer_question(
+        database_path=database_path,
+        question=question,
+        api_key=api_key,
+        model=model,
+    )
+    if guild_id != history_guild_id:
+        return result.answer, None
+
+    episode_guids = _result_episode_guids(result)
+    keywords = query_terms(question)
+    previous_user_id = None
+    if _has_local_evidence(result):
+        previous_user_id = find_previous_related_question_user(
+            database_path,
+            guild_id=guild_id,
+            current_user_id=user_id,
+            episode_guids=episode_guids,
+            keywords=keywords,
+        )
+    record_question_history(
+        database_path,
+        message_id=message_id,
+        guild_id=guild_id,
+        channel_id=channel_id,
+        user_id=user_id,
+        user_display_name=user_display_name,
+        question=question,
+        asked_at=asked_at,
+        episode_guids=episode_guids,
+        keywords=keywords,
+    )
+    return result.answer, previous_user_id
+
+
+def _record_historical_question(
+    *,
+    database_path: str,
+    question: str,
+    message_id: int,
+    guild_id: int,
+    channel_id: int,
+    user_id: int,
+    user_display_name: str,
+    asked_at: str,
+) -> None:
+    result = answer_question(database_path=database_path, question=question, api_key=None)
+    record_question_history(
+        database_path,
+        message_id=message_id,
+        guild_id=guild_id,
+        channel_id=channel_id,
+        user_id=user_id,
+        user_display_name=user_display_name,
+        question=question,
+        asked_at=asked_at,
+        episode_guids=_result_episode_guids(result),
+        keywords=query_terms(question),
+    )
+
+
+def _has_local_evidence(result: AskResult) -> bool:
+    return bool(
+        result.book_mentions
+        or result.concept_mentions
+        or result.concept_clusters
+        or result.concept_relationships
+        or result.summaries
+        or result.transcript_results
+    )
+
+
+def _result_episode_guids(result: AskResult) -> list[str]:
+    guids: list[str] = []
+    collections = (
+        result.book_mentions,
+        result.concept_mentions,
+        result.concept_clusters,
+        result.concept_relationships,
+        result.summaries,
+        result.transcript_results,
+    )
+    for collection in collections:
+        for item in collection:
+            guid = item.episode.guid
+            if guid not in guids:
+                guids.append(guid)
+    return guids
 
 
 def _format_ping_response() -> str:

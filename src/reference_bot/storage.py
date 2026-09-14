@@ -130,6 +130,32 @@ CREATE TABLE IF NOT EXISTS concept_relationships (
 """
 
 
+QUESTION_HISTORY_SCHEMA = """
+CREATE TABLE IF NOT EXISTS question_history (
+    message_id TEXT PRIMARY KEY,
+    guild_id TEXT NOT NULL,
+    channel_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    user_display_name TEXT NOT NULL,
+    question TEXT NOT NULL,
+    asked_at TEXT NOT NULL,
+    episode_guids_text TEXT NOT NULL,
+    keywords_text TEXT NOT NULL,
+    recorded_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
+
+QUESTION_HISTORY_CURSOR_SCHEMA = """
+CREATE TABLE IF NOT EXISTS question_history_cursors (
+    channel_id TEXT PRIMARY KEY,
+    guild_id TEXT NOT NULL,
+    last_message_id TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
+
 AUDIO_DOWNLOAD_COLUMNS = {
     "audio_local_path": "TEXT",
     "audio_downloaded_at": "TEXT",
@@ -173,6 +199,8 @@ def initialize_database(database_path: str) -> None:
         connection.execute(CONCEPT_MENTIONS_SCHEMA)
         connection.execute(CONCEPT_CLUSTERS_SCHEMA)
         connection.execute(CONCEPT_RELATIONSHIPS_SCHEMA)
+        connection.execute(QUESTION_HISTORY_SCHEMA)
+        connection.execute(QUESTION_HISTORY_CURSOR_SCHEMA)
         _ensure_columns(connection, "episodes", AUDIO_DOWNLOAD_COLUMNS)
         _ensure_columns(connection, "episodes", TRANSCRIPTION_COLUMNS)
         _ensure_columns(connection, "episodes", OBSIDIAN_EXPORT_COLUMNS)
@@ -578,6 +606,129 @@ def mark_episode_announcements_superseded(database_path: str, guids: Iterable[st
                 AND announcement_status IN ('pending', 'failed')
             """,
             rows,
+        )
+
+
+def record_question_history(
+    database_path: str,
+    *,
+    message_id: int,
+    guild_id: int,
+    channel_id: int,
+    user_id: int,
+    user_display_name: str,
+    question: str,
+    asked_at: str,
+    episode_guids: Iterable[str],
+    keywords: Iterable[str],
+) -> None:
+    initialize_database(database_path)
+    episode_guid_text = "\n".join(_dedupe_nonempty(episode_guids))
+    keyword_text = "\n".join(_dedupe_nonempty(keywords))
+    with sqlite3.connect(database_path) as connection:
+        connection.execute(
+            """
+            INSERT INTO question_history (
+                message_id,
+                guild_id,
+                channel_id,
+                user_id,
+                user_display_name,
+                question,
+                asked_at,
+                episode_guids_text,
+                keywords_text
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(message_id) DO UPDATE SET
+                guild_id = excluded.guild_id,
+                channel_id = excluded.channel_id,
+                user_id = excluded.user_id,
+                user_display_name = excluded.user_display_name,
+                question = excluded.question,
+                asked_at = excluded.asked_at,
+                episode_guids_text = excluded.episode_guids_text,
+                keywords_text = excluded.keywords_text,
+                recorded_at = CURRENT_TIMESTAMP
+            """,
+            (
+                str(message_id),
+                str(guild_id),
+                str(channel_id),
+                str(user_id),
+                user_display_name,
+                question,
+                asked_at,
+                episode_guid_text,
+                keyword_text,
+            ),
+        )
+
+
+def find_previous_related_question_user(
+    database_path: str,
+    *,
+    guild_id: int,
+    current_user_id: int,
+    episode_guids: Iterable[str],
+    keywords: Iterable[str],
+) -> int | None:
+    episode_guid_set = set(_dedupe_nonempty(episode_guids))
+    keyword_set = {keyword.casefold() for keyword in _dedupe_nonempty(keywords)}
+    if not episode_guid_set and not keyword_set:
+        return None
+
+    initialize_database(database_path)
+    with sqlite3.connect(database_path) as connection:
+        rows = connection.execute(
+            """
+            SELECT user_id, episode_guids_text, keywords_text
+            FROM question_history
+            WHERE guild_id = ? AND user_id != ?
+            ORDER BY asked_at DESC, message_id DESC
+            """,
+            (str(guild_id), str(current_user_id)),
+        ).fetchall()
+
+    for user_id, stored_episode_guids, stored_keywords in rows:
+        previous_episode_guids = set(stored_episode_guids.splitlines())
+        previous_keywords = {keyword.casefold() for keyword in stored_keywords.splitlines()}
+        if episode_guid_set.intersection(previous_episode_guids) or keyword_set.intersection(
+            previous_keywords
+        ):
+            return int(user_id)
+    return None
+
+
+def get_question_history_cursor(database_path: str, channel_id: int) -> int | None:
+    initialize_database(database_path)
+    with sqlite3.connect(database_path) as connection:
+        row = connection.execute(
+            "SELECT last_message_id FROM question_history_cursors WHERE channel_id = ?",
+            (str(channel_id),),
+        ).fetchone()
+    return int(row[0]) if row else None
+
+
+def set_question_history_cursor(
+    database_path: str,
+    *,
+    guild_id: int,
+    channel_id: int,
+    last_message_id: int,
+) -> None:
+    initialize_database(database_path)
+    with sqlite3.connect(database_path) as connection:
+        connection.execute(
+            """
+            INSERT INTO question_history_cursors (channel_id, guild_id, last_message_id)
+            VALUES (?, ?, ?)
+            ON CONFLICT(channel_id) DO UPDATE SET
+                guild_id = excluded.guild_id,
+                last_message_id = excluded.last_message_id,
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (str(channel_id), str(guild_id), str(last_message_id)),
         )
 
 
@@ -1629,6 +1780,18 @@ def _dedupe_terms(terms: list[str]) -> list[str]:
 
 def _escape_like(value: str) -> str:
     return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def _dedupe_nonempty(values: Iterable[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        cleaned = value.strip()
+        if not cleaned or cleaned in seen:
+            continue
+        seen.add(cleaned)
+        result.append(cleaned)
+    return result
 
 
 def _episode_sort_date(episode: Episode) -> datetime:

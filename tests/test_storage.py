@@ -12,7 +12,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from reference_bot.episodes import BookMention, ConceptMention, Episode, EpisodeSummary
 from reference_bot.storage import (
     count_episodes,
+    find_previous_related_question_user,
     get_audio_local_path,
+    get_question_history_cursor,
     initialize_database,
     list_episodes,
     list_indexed_episodes,
@@ -30,18 +32,80 @@ from reference_bot.storage import (
     mark_transcript_note_exported,
     mark_transcription_failed,
     replace_transcript_chunks,
+    record_question_history,
     replace_book_mentions,
     replace_concept_mentions,
     search_book_mentions,
     search_concept_mentions,
     search_transcript_chunks,
     search_episode_summaries,
+    set_question_history_cursor,
     upsert_episodes,
     upsert_episode_summary,
 )
 
 
 class StorageTests(unittest.TestCase):
+    def test_question_history_finds_latest_different_user_by_episode_or_keyword(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            database_path = str(Path(temporary_directory) / "episodes.sqlite3")
+            record_question_history(
+                database_path,
+                message_id=100,
+                guild_id=10,
+                channel_id=20,
+                user_id=1,
+                user_display_name="甲",
+                question="EP.375 在講什麼？",
+                asked_at="2026-09-10T10:00:00+08:00",
+                episode_guids=["episode-375"],
+                keywords=["三種真實"],
+            )
+            record_question_history(
+                database_path,
+                message_id=101,
+                guild_id=10,
+                channel_id=20,
+                user_id=3,
+                user_display_name="乙",
+                question="有沒有三種真實？",
+                asked_at="2026-09-11T10:00:00+08:00",
+                episode_guids=[],
+                keywords=["三種真實"],
+            )
+
+            by_episode = find_previous_related_question_user(
+                database_path,
+                guild_id=10,
+                current_user_id=2,
+                episode_guids=["episode-375"],
+                keywords=[],
+            )
+            by_keyword = find_previous_related_question_user(
+                database_path,
+                guild_id=10,
+                current_user_id=2,
+                episode_guids=[],
+                keywords=["三種真實"],
+            )
+
+            self.assertEqual(by_episode, 1)
+            self.assertEqual(by_keyword, 3)
+
+    def test_question_history_cursor_round_trip(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            database_path = str(Path(temporary_directory) / "episodes.sqlite3")
+            self.assertIsNone(get_question_history_cursor(database_path, 20))
+
+            set_question_history_cursor(
+                database_path,
+                guild_id=10,
+                channel_id=20,
+                last_message_id=123456,
+            )
+
+            self.assertEqual(get_question_history_cursor(database_path, 20), 123456)
+
     def test_pending_announcement_is_prioritized_for_summary_generation(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             database_path = str(Path(temporary_directory) / "episodes.sqlite3")

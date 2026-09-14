@@ -120,6 +120,7 @@ def _database_counts(path: Path) -> dict[str, int]:
             "concept_mentions": _count(connection, "concept_mentions"),
             "concept_clusters": _count(connection, "concept_clusters"),
             "concept_relationships": _count(connection, "concept_relationships"),
+            "question_history": _count(connection, "question_history"),
         }
 
 
